@@ -5,7 +5,16 @@
 <html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
  <head>
    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
-   <%= stylesheet_link_tag "site" %>
+   <%= stylesheet_link_tag "site" %> <!--This line will go away once I start to implement the blueprint layout. -->
+   <%= stylesheet_link_tag "blueprint/screen", :media => "screen, projection" %>
+   <%= stylesheet_link_tag "blueprint/print", :media => "print" %>
+   
+   <!--[if lt IE 8]>
+    <%= stylesheet_link_tag "blueprint/ie", :media => "screen, projection" %>
+   <![endif]-->
+   
+   
+
    <title><%= @title %></title>
  </head>
 
@@ -33,6 +42,10 @@
 
 			<%= @content_for_layout %>
 		</div>
+
+                <div id="footer">
+                  This site makes use of Blueprint: http://www.blueprintcss.org/
+                </div>
 
  	</div> <!-- end whole_page -->
 
