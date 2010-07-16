@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+ <head>
+   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+   <%= stylesheet_link_tag "site" %>
+   <title><%= @title %></title>
+ </head>
+
+ <body>
+ 	<div id="whole_page">
+ 		<div id="header">
+ 			<center><h1>Banner Goes Here</h1></center>
+ 			<div id="nav">
+ 				<div id="nav_left">
+ 					<%= nav_link "Home",     :site, :index    %> |
+					<%= nav_link "About",    :site, :about    %> |
+					<%= nav_link "Help",     :site, :help     %>
+ 				</div><!-- end nav_left-->
+				<div id="nav_right">
+					[Coming Soon]
+				</div><!-- end nav_right-->
+ 			</div><!-- end nav -->
+ 		</div><!-- end header-->
+
+
+		<div id="content">
+			<% if flash[:notice] -%>
+				<div id="notice"><%= flash[:notice] %></div>
+			<% end %>
+
+			<%= @content_for_layout %>
+		</div>
+
+ 	</div> <!-- end whole_page -->
+
+
+
+ </body>
+</html>
