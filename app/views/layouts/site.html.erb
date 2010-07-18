@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+   "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml" xml:lang="en" lang="en">
+ <head>
+   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+   <!-- Adding in the BluePrint style sheets -->
+		<%= stylesheet_link_tag "blueprint/screen", :media => "screen, projection" %>
+		<%= stylesheet_link_tag "blueprint/print", :media => "print" %>
+		<!--[if lt IE 8]><%= stylesheet_link_tag "blueprint/ie", :media => "screen, projection" %><![endif]-->
+   <!-- End BluePrint Stylesheety inclusion -->
+   <%= stylesheet_link_tag "site" %>
+   
+
+   <title><%= @title %></title>
+ </head>
+
+ <body>
+ 	<div class="container" id="whole_page">
+		<div class="span-24 last top_buffer">
+		&nbsp; 
+		</div> <!-- end top_buffer -->
+		
+		
+		<div class="page_body span-24 last" >
+
+			<div class="span-24 last" id="header">
+				<h1>The Header Goes Here</h1>
+			</div> <!-- end header -->
+		
+			<div class="span-4" id="left_sidebar">
+				Left Sidebar
+			</div><!--end left_sidebar-->
+			
+			<div class="span-16 page_content">
+			
+				<% if flash[:notice] -%>
+					<div id="notice"><%= flash[:notice] %></div>
+				<% end %>
+
+				<%= @content_for_layout %>
+				
+			</div><!-- end page_content-->
+				
+			<div class="span-4 last" id="right_sidebar">
+				Right Side Bar
+			</div><!--end right_sidebar-->	
+
+
+			<div class="span-24 last" id="footer">
+				<h1>The footer Goes Here</h1>
+			</div> <!-- endfooter -->
+
+		</div> <!-- end page_body -->
+
+	
+		
+		
+		
+ 	
+ 	</div> <!-- end whole_page container -->
+
+
+ </body>
+</html>
