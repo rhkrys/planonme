@@ -9,4 +9,4 @@ The earlier 2010 Rails prototype is in this repository's git history.
 
 ## License
 
-See [LICENSE](LICENSE).
+MIT. Free and open for anyone to use, change and share. See [LICENSE](LICENSE).
