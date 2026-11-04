@@ -187,3 +187,83 @@ test('a failed load shows an error', async () => {
   render(<SlidesView />)
   expect(await screen.findByRole('alert')).toHaveTextContent('Could not read the slides.')
 })
+
+test('two files dropped quickly start only one import', async () => {
+  workshopStore.setState({ loadSlideDecks: async () => [], addSlideDeck: async () => true })
+  vi.mocked(pipeline.importPdf).mockImplementation(() => new Promise(() => {}))
+  render(<SlidesView />)
+  await waitFor(() => expect(screen.getByLabelText('Choose PDF file')).toBeEnabled())
+  const zone = screen.getByTestId('drop-zone')
+  const drop = () => {
+    const event = new Event('drop', { bubbles: true, cancelable: true })
+    Object.defineProperty(event, 'dataTransfer', {
+      value: { files: [pdfFile()], types: ['Files'] },
+    })
+    zone.dispatchEvent(event)
+  }
+  act(() => {
+    drop()
+    drop()
+  })
+  expect(await screen.findByTestId('import-status')).toBeInTheDocument()
+  expect(pipeline.importPdf).toHaveBeenCalledTimes(1)
+})
+
+test('decks of the previous workshop are not shown while the next one loads', async () => {
+  const first = workshopStore.getState().currentId
+  workshopStore.setState({ loadSlideDecks: async () => [deck('d1', 'Old deck', 2)] })
+  render(<SlidesView />)
+  expect(await screen.findByRole('heading', { name: 'Old deck' })).toBeInTheDocument()
+
+  let finish: (decks: SlideDeck[]) => void = () => {}
+  workshopStore.setState({
+    loadSlideDecks: () => new Promise<SlideDeck[]>((resolve) => (finish = resolve)),
+  })
+  act(() => workshopStore.setState({ currentId: 'other-workshop' }))
+  expect(screen.queryByRole('heading', { name: 'Old deck' })).toBeNull()
+  expect(screen.getByText('Loading slides...')).toBeInTheDocument()
+  expect(screen.getByLabelText('Choose PDF file')).toBeDisabled()
+  await act(async () => finish([deck('d2', 'New deck', 1)]))
+  expect(await screen.findByRole('heading', { name: 'New deck' })).toBeInTheDocument()
+  act(() => workshopStore.setState({ currentId: first }))
+})
+
+test('focus goes back to the deck buttons after a move, a cancel and a delete', async () => {
+  let decks = [deck('d1', 'Intro', 2), deck('d2', 'Main', 3)]
+  workshopStore.setState({
+    loadSlideDecks: async () => decks,
+    moveSlideDeck: async () => {
+      decks = [decks[1]!, decks[0]!]
+      workshopStore.setState({ media: { decks: [], sounds: [] } })
+      return true
+    },
+    deleteSlideDeck: async (id) => {
+      decks = decks.filter((d) => d.id !== id)
+      workshopStore.setState({ media: { decks: [], sounds: [] } })
+      return true
+    },
+  })
+  render(<SlidesView />)
+  const down = await screen.findByRole('button', { name: 'Move Intro down' })
+  down.focus()
+  await userEvent.keyboard('{Enter}')
+  // Intro is now last, so its down button is disabled and focus moves to its up button.
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Move Intro up' })).toHaveFocus())
+
+  screen.getByRole('button', { name: 'Rename Intro' }).focus()
+  await userEvent.keyboard('{Enter}')
+  expect(screen.getByRole('form', { name: 'Rename deck Intro' })).toBeInTheDocument()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.getByRole('button', { name: 'Rename Intro' })).toHaveFocus()
+
+  screen.getByRole('button', { name: 'Delete Main' }).focus()
+  await userEvent.keyboard('{Enter}')
+  expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+  await userEvent.keyboard('{Enter}')
+  expect(screen.getByRole('button', { name: 'Delete Main' })).toHaveFocus()
+
+  await userEvent.keyboard('{Enter}')
+  await userEvent.click(screen.getByRole('button', { name: 'Delete deck' }))
+  await waitFor(() => expect(screen.queryByRole('heading', { name: 'Main' })).toBeNull())
+  expect(screen.getByRole('button', { name: 'Delete Intro' })).toHaveFocus()
+})

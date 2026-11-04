@@ -29,6 +29,9 @@ const binaryFiles: Record<string, string> = {
 
 const PREFIX = '/node_modules/pdfjs-dist/'
 
+/** Largest embedded image pdf.js decodes, in pixels. */
+const MAX_IMAGE_PIXELS = 100_000_000
+
 /** Gives pdf.js its helper files from the bundled copies. */
 class BundledBinaryDataFactory {
   private readonly bases: Record<string, string>
@@ -76,6 +79,9 @@ export const openPdf: PdfOpener = async (data, signal) => {
     disableAutoFetch: true,
     disableStream: true,
     disableRange: true,
+    // Skip images over 100 megapixels. A tiny PDF can hold a huge image that takes ages and
+    // lots of memory to decode, and no slide needs one that big.
+    maxImageSize: MAX_IMAGE_PIXELS,
   })
   const onAbort = () => void task.destroy()
   signal.addEventListener('abort', onAbort, { once: true })

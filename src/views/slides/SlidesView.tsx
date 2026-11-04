@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type DragEvent, type FormEvent, type RefObject } from 'react'
 import { LIMITS } from '../../db/limits'
 import { DECK_SOURCES, type DeckSource, type SlideDeck } from '../../db/types'
 import { deckStarts, slideRangeLabel, SOURCE_LABELS } from '../../slides/decks'
@@ -26,23 +26,22 @@ export function SlidesView() {
   const currentId = useWorkshopStore((s) => s.currentId)
   const media = useWorkshopStore((s) => s.media)
 
-  const [decks, setDecks] = useState<SlideDeck[] | null>(null)
-  const [loadFailed, setLoadFailed] = useState(false)
+  // Decks are kept with the workshop they belong to, so another workshop's decks never show
+  // (or count toward its limits) while the new ones load.
+  const [loaded, setLoaded] = useState<{ id: string; decks: SlideDeck[]; failed: boolean } | null>(
+    null,
+  )
 
   // Reload the decks with their images whenever the workshop or its media change.
   useEffect(() => {
     let stale = false
-    if (!currentId) {
-      setDecks([])
-      return
-    }
+    if (!currentId) return
     void workshopStore
       .getState()
       .loadSlideDecks()
       .then((result) => {
         if (stale) return
-        setDecks(result ?? [])
-        setLoadFailed(result === null)
+        setLoaded({ id: currentId, decks: result ?? [], failed: result === null })
       })
     return () => {
       stale = true
@@ -58,6 +57,8 @@ export function SlidesView() {
     )
   }
 
+  const decks = loaded?.id === currentId ? loaded.decks : null
+  const loadFailed = loaded?.id === currentId && loaded.failed
   const totalSlides = (decks ?? []).reduce((sum, d) => sum + d.slides.length, 0)
 
   return (
@@ -97,6 +98,12 @@ function ImportPanel({
   const [dragging, setDragging] = useState(false)
   const abortRef = useRef<AbortController | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLElement>(null)
+  const cancelButton = useRef<HTMLButtonElement>(null)
+  // Set synchronously, so two files dropped in quick succession cannot start two imports.
+  const runningRef = useRef(false)
+  // Where keyboard focus should go once the progress view or the file button appears.
+  const [focusTo, setFocusTo] = useState<'cancel' | 'file' | null>(null)
 
   // Stop rendering when the view closes.
   useEffect(() => () => abortRef.current?.abort(), [])
@@ -115,13 +122,30 @@ function ImportPanel({
   }, [])
 
   const busy = state.kind !== 'idle'
+
+  // The file button disappears while importing and the Cancel button when done. Move focus
+  // along with them, but only if it was in this panel and has not gone anywhere else since.
+  useEffect(() => {
+    if (!focusTo) return
+    const active = document.activeElement
+    const lost = !active || active === document.body || !!panelRef.current?.contains(active)
+    const target = focusTo === 'cancel' ? cancelButton.current : fileInput.current
+    if (!target) return
+    setFocusTo(null)
+    if (lost) target.focus()
+  }, [focusTo, state.kind])
+
   const full = deckCount >= LIMITS.maxDecks || roomForSlides <= 0
   const canImport = ready && !busy && !full
 
   async function start(file: File) {
-    if (!canImport) return
+    if (!canImport || runningRef.current) return
     const workshopId = workshopStore.getState().currentId
     if (!workshopId) return
+    runningRef.current = true
+    const active = document.activeElement
+    const hadFocus = !!active && !!panelRef.current?.contains(active)
+    if (hadFocus) setFocusTo('cancel')
     setError(null)
     setInfo(null)
     const controller = new AbortController()
@@ -155,7 +179,9 @@ function ImportPanel({
       }
     } finally {
       if (abortRef.current === controller) abortRef.current = null
+      runningRef.current = false
       setState({ kind: 'idle' })
+      if (hadFocus) setFocusTo('file')
       if (fileInput.current) fileInput.current.value = ''
     }
   }
@@ -190,7 +216,7 @@ function ImportPanel({
   }
 
   return (
-    <section className="slide-import" aria-labelledby="slide-import-title">
+    <section ref={panelRef} className="slide-import" aria-labelledby="slide-import-title">
       <h2 id="slide-import-title">Import a PDF</h2>
       <form className="slide-import-form" aria-label="Import slides" onSubmit={onSubmit}>
         <div className="field wide">
@@ -249,7 +275,11 @@ function ImportPanel({
             </p>
           </>
         ) : (
-          <ImportProgressView state={state} onCancel={() => abortRef.current?.abort()} />
+          <ImportProgressView
+            state={state}
+            cancelRef={cancelButton}
+            onCancel={() => abortRef.current?.abort()}
+          />
         )}
       </div>
       {full && (
@@ -278,9 +308,11 @@ function ImportPanel({
 
 function ImportProgressView({
   state,
+  cancelRef,
   onCancel,
 }: {
   state: Exclude<ImportState, { kind: 'idle' }>
+  cancelRef: RefObject<HTMLButtonElement | null>
   onCancel: () => void
 }) {
   let text: string
@@ -304,7 +336,7 @@ function ImportProgressView({
         {text}
       </p>
       {state.kind === 'working' && (
-        <button type="button" className="btn" onClick={onCancel}>
+        <button ref={cancelRef} type="button" className="btn" onClick={onCancel}>
           Cancel import
         </button>
       )}
@@ -314,9 +346,57 @@ function ImportProgressView({
 
 type DeckMode = { kind: 'idle' } | { kind: 'rename'; id: string } | { kind: 'delete'; id: string }
 
+type DeckAction = 'up' | 'down' | 'rename' | 'delete'
+
+/** Where keyboard focus goes after a deck action. A null deck means the file button. */
+interface FocusRequest {
+  deckId: string | null
+  action: DeckAction
+  /** The decks shown when the request was made. Focus is set again once newer decks arrive. */
+  decks: SlideDeck[]
+  /** True when no newer decks will come, so one try is enough. */
+  once: boolean
+}
+
+// If the wanted button is disabled (a deck moved to the top, for example), try these instead.
+const FOCUS_FALLBACK: Record<DeckAction, DeckAction[]> = {
+  up: ['up', 'down', 'rename'],
+  down: ['down', 'up', 'rename'],
+  rename: ['rename'],
+  delete: ['delete'],
+}
+
+function focusDeckButton(list: HTMLElement | null, deckId: string | null, action: DeckAction) {
+  if (deckId === null) {
+    document.querySelector<HTMLInputElement>('input[aria-label="Choose PDF file"]')?.focus()
+    return
+  }
+  for (const a of FOCUS_FALLBACK[action]) {
+    const button = list?.querySelector<HTMLButtonElement>(
+      `button[data-deck="${CSS.escape(deckId)}"][data-action="${a}"]`,
+    )
+    if (button && !button.disabled) {
+      button.focus()
+      return
+    }
+  }
+}
+
 function DeckList({ decks }: { decks: SlideDeck[] }) {
   const [mode, setMode] = useState<DeckMode>({ kind: 'idle' })
   const [busy, setBusy] = useState(false)
+  const [focus, setFocus] = useState<FocusRequest | null>(null)
+  const listRef = useRef<HTMLElement>(null)
+
+  // Buttons are disabled while an action runs, which drops keyboard focus. Put it back on the
+  // matching button, and again once the reloaded decks are shown.
+  useEffect(() => {
+    if (!focus || busy) return
+    const active = document.activeElement
+    const lost = !active || active === document.body || !!listRef.current?.contains(active)
+    if (lost) focusDeckButton(listRef.current, focus.deckId, focus.action)
+    if (focus.once || focus.decks !== decks) setFocus(null)
+  }, [focus, busy, decks])
 
   if (decks.length === 0) {
     return (
@@ -328,20 +408,43 @@ function DeckList({ decks }: { decks: SlideDeck[] }) {
 
   const starts = deckStarts(decks.map((d) => ({ slideCount: d.slides.length })))
 
-  async function act(task: () => Promise<unknown>) {
+  async function act(
+    task: () => Promise<boolean>,
+    focusAfter: { deckId: string | null; action: DeckAction },
+  ) {
+    const before = decks
     setBusy(true)
+    let ok = false
     try {
-      await task()
+      ok = await task()
     } finally {
       setBusy(false)
       setMode({ kind: 'idle' })
+      setFocus({ ...focusAfter, decks: before, once: !ok })
     }
+  }
+
+  function changeMode(deckId: string, kind: DeckMode['kind']) {
+    if (kind !== 'idle') {
+      setMode({ kind, id: deckId })
+      return
+    }
+    // Closing a rename or delete step puts focus back on the button that opened it.
+    const action = mode.kind === 'idle' ? 'rename' : mode.kind
+    setMode({ kind: 'idle' })
+    setFocus({ deckId, action, decks, once: true })
+  }
+
+  /** After a delete, focus the next deck, or the one before, or the file button. */
+  function neighbourOf(deckId: string): string | null {
+    const i = decks.findIndex((d) => d.id === deckId)
+    return (decks[i + 1] ?? decks[i - 1])?.id ?? null
   }
 
   const store = workshopStore.getState()
 
   return (
-    <section className="decks" aria-labelledby="decks-title">
+    <section ref={listRef} className="decks" aria-labelledby="decks-title">
       <h2 id="decks-title">Decks</h2>
       <p className="hint muted">
         Slides are numbered across all decks in this order. Moving or deleting a deck changes the
@@ -357,10 +460,20 @@ function DeckList({ decks }: { decks: SlideDeck[] }) {
             last={i === decks.length - 1}
             busy={busy}
             mode={mode.kind !== 'idle' && mode.id === deck.id ? mode.kind : 'idle'}
-            onMode={(kind) => setMode(kind === 'idle' ? { kind } : { kind, id: deck.id })}
-            onMove={(delta) => act(() => store.moveSlideDeck(deck.id, delta))}
-            onRename={(name) => act(() => store.renameSlideDeck(deck.id, name))}
-            onDelete={() => act(() => store.deleteSlideDeck(deck.id))}
+            onMode={(kind) => changeMode(deck.id, kind)}
+            onMove={(delta) =>
+              act(() => store.moveSlideDeck(deck.id, delta), {
+                deckId: deck.id,
+                action: delta < 0 ? 'up' : 'down',
+              })
+            }
+            onRename={(name) =>
+              act(() => store.renameSlideDeck(deck.id, name), { deckId: deck.id, action: 'rename' })
+            }
+            onDelete={() => {
+              const next = neighbourOf(deck.id)
+              void act(() => store.deleteSlideDeck(deck.id), { deckId: next, action: 'delete' })
+            }}
           />
         ))}
       </ol>
@@ -413,6 +526,8 @@ function DeckCard({
             type="button"
             className="btn icon"
             aria-label={`Move ${deck.name} up`}
+            data-deck={deck.id}
+            data-action="up"
             disabled={busy || first}
             onClick={() => onMove(-1)}
           >
@@ -422,6 +537,8 @@ function DeckCard({
             type="button"
             className="btn icon"
             aria-label={`Move ${deck.name} down`}
+            data-deck={deck.id}
+            data-action="down"
             disabled={busy || last}
             onClick={() => onMove(1)}
           >
@@ -431,6 +548,8 @@ function DeckCard({
             type="button"
             className="btn"
             aria-label={`Rename ${deck.name}`}
+            data-deck={deck.id}
+            data-action="rename"
             disabled={busy}
             onClick={() => {
               setName(deck.name)
@@ -443,6 +562,8 @@ function DeckCard({
             type="button"
             className="btn"
             aria-label={`Delete ${deck.name}`}
+            data-deck={deck.id}
+            data-action="delete"
             disabled={busy}
             onClick={() => onMode('delete')}
           >

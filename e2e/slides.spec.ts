@@ -1,5 +1,5 @@
 import { test, expect, type Page } from '@playwright/test'
-import { PDFDocument, rgb, StandardFonts } from 'pdf-lib'
+import { PDFDocument, PDFName, rgb, StandardFonts } from 'pdf-lib'
 
 // Node's Buffer, typed here because this project does not include @types/node.
 declare const Buffer: { from(data: Uint8Array | string): never }
@@ -138,4 +138,83 @@ test('drop a PDF on the drop zone to import it', async ({ page }) => {
   await expect(
     page.getByRole('list', { name: 'Slides in Dropped deck' }).getByRole('img'),
   ).toHaveCount(2)
+})
+
+test('a tiny PDF with a huge image imports quickly without decoding the image', async ({
+  page,
+}) => {
+  // A 30000 by 30000 pixel image (900 megapixels) in a file of a few kilobytes.
+  const doc = await PDFDocument.create()
+  const pdfPage = doc.addPage([960, 540])
+  const image = doc.context.flateStream(new Uint8Array(1000), {
+    Type: 'XObject',
+    Subtype: 'Image',
+    Width: 30000,
+    Height: 30000,
+    ColorSpace: 'DeviceGray',
+    BitsPerComponent: 8,
+  })
+  pdfPage.node.setXObject(PDFName.of('Im1'), doc.context.register(image))
+  const content = doc.context.flateStream('q 960 0 0 540 0 0 cm /Im1 Do Q')
+  pdfPage.node.set(PDFName.of('Contents'), doc.context.register(content))
+  const bytes = await doc.save()
+
+  const warnings: string[] = []
+  page.on('console', (m) => warnings.push(m.text()))
+  await page.goto('/')
+  await expect(page.getByRole('combobox', { name: 'Current workshop' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Slides' }).click()
+  await importPdf(page, 'huge image.pdf', bytes)
+  await expect(page.getByRole('status')).toContainText('Added "huge image" with 1 slide.', {
+    timeout: 5000,
+  })
+  expect(warnings.some((w) => w.includes('Image exceeded maximum allowed size'))).toBe(true)
+})
+
+test('keyboard focus stays in place while importing and editing decks', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('combobox', { name: 'Current workshop' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Slides' }).click()
+  const fileInput = page.getByLabel('Choose PDF file')
+  await fileInput.focus()
+  await importPdf(page, 'one.pdf', await makePdf(2, 'One'))
+  await expect(page.getByRole('status')).toContainText('Added "one"')
+  await expect(fileInput).toBeFocused()
+  await importPdf(page, 'two.pdf', await makePdf(1, 'Two'))
+  await expect(page.getByTestId('deck')).toHaveCount(2)
+
+  // Moving "one" to the bottom disables its down button, so focus goes to its up button.
+  await page.getByRole('button', { name: 'Move one down' }).focus()
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('deck').first()).toContainText('two')
+  await expect(page.getByRole('button', { name: 'Move one up' })).toBeFocused()
+
+  await page.getByRole('button', { name: 'Rename one' }).focus()
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Rename one' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await page.keyboard.type(' more')
+  await page.keyboard.press('Enter')
+  await expect(page.getByRole('button', { name: 'Rename one more' })).toBeFocused()
+
+  await page.getByRole('button', { name: 'Delete one more' }).focus()
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Enter') // Cancel has focus.
+  await expect(page.getByRole('button', { name: 'Delete one more' })).toBeFocused()
+
+  // Deleting the last deck in the list moves focus to the deck before it.
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Shift+Tab')
+  await expect(page.getByRole('button', { name: 'Delete deck' })).toBeFocused()
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('deck')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Delete two' })).toBeFocused()
+
+  // With no decks left, focus goes to the file button.
+  await page.keyboard.press('Enter')
+  await page.keyboard.press('Shift+Tab')
+  await page.keyboard.press('Enter')
+  await expect(page.getByTestId('deck')).toHaveCount(0)
+  await expect(fileInput).toBeFocused()
 })
