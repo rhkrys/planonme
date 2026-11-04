@@ -1,0 +1,174 @@
+import { useStore } from 'zustand'
+import { createStore, type StoreApi } from 'zustand/vanilla'
+import { BackupError, exportWorkshop, importWorkshop, type ExportedFile } from '../db/backup'
+import { PlanOnMeDB } from '../db/db'
+import {
+  createWorkshop,
+  deleteWorkshop,
+  getCurrentWorkshopId,
+  getWorkshop,
+  listWorkshops,
+  renameWorkshop,
+  saveWorkshop,
+  setCurrentWorkshopId,
+} from '../db/repo'
+import type { Workshop, WorkshopSummary } from '../db/types'
+
+export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+export type WorkshopPatch = Partial<Pick<Workshop, 'title' | 'date' | 'durationMin' | 'blocks'>>
+
+export interface WorkshopState {
+  status: LoadStatus
+  workshops: WorkshopSummary[]
+  currentId: string | null
+  current: Workshop | null
+  /** A readable error for the user, or null. */
+  error: string | null
+  /** A short success message for the user, or null. */
+  notice: string | null
+  init: () => Promise<void>
+  createWorkshop: (title: string) => Promise<void>
+  selectWorkshop: (id: string) => Promise<void>
+  renameWorkshop: (id: string, title: string) => Promise<void>
+  deleteWorkshop: (id: string) => Promise<void>
+  updateCurrent: (patch: WorkshopPatch) => Promise<void>
+  exportCurrent: () => Promise<ExportedFile | null>
+  importFile: (file: Blob) => Promise<boolean>
+  clearMessages: () => void
+}
+
+export const FIRST_WORKSHOP_TITLE = 'My workshop'
+
+function describe(err: unknown, fallback: string): string {
+  if (err instanceof BackupError) return err.message
+  return fallback
+}
+
+export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopState> {
+  return createStore<WorkshopState>()((set, get) => {
+    /** Reloads the list and the current workshop, falling back to the first one. */
+    async function refresh(preferredId: string | null): Promise<void> {
+      const db = getDb()
+      const workshops = await listWorkshops(db)
+      const wanted = preferredId && workshops.some((w) => w.id === preferredId) ? preferredId : null
+      const id = wanted ?? workshops[0]?.id ?? null
+      const current = id ? await getWorkshop(db, id) : null
+      set({ workshops, currentId: current?.id ?? null, current })
+      await setCurrentWorkshopId(db, current?.id ?? null)
+    }
+
+    async function run(action: () => Promise<void>, failure: string): Promise<boolean> {
+      try {
+        await action()
+        return true
+      } catch (err) {
+        console.error(err)
+        set({ error: describe(err, failure), notice: null })
+        return false
+      }
+    }
+
+    return {
+      status: 'idle',
+      workshops: [],
+      currentId: null,
+      current: null,
+      error: null,
+      notice: null,
+
+      init: async () => {
+        if (get().status === 'loading' || get().status === 'ready') return
+        set({ status: 'loading', error: null })
+        const ok = await run(async () => {
+          const db = getDb()
+          if ((await listWorkshops(db)).length === 0) {
+            await createWorkshop(db, FIRST_WORKSHOP_TITLE)
+          }
+          await refresh(await getCurrentWorkshopId(db))
+        }, 'Could not open saved workshops. Browser storage may be blocked or full.')
+        set({ status: ok ? 'ready' : 'error' })
+      },
+
+      createWorkshop: async (title) => {
+        await run(async () => {
+          const w = await createWorkshop(getDb(), title)
+          await refresh(w.id)
+          set({ error: null, notice: null })
+        }, 'Could not create the workshop.')
+      },
+
+      selectWorkshop: async (id) => {
+        await run(async () => {
+          await refresh(id)
+          set({ error: null, notice: null })
+        }, 'Could not open the workshop.')
+      },
+
+      renameWorkshop: async (id, title) => {
+        await run(async () => {
+          await renameWorkshop(getDb(), id, title)
+          await refresh(get().currentId)
+          set({ error: null, notice: null })
+        }, 'Could not rename the workshop.')
+      },
+
+      deleteWorkshop: async (id) => {
+        await run(async () => {
+          await deleteWorkshop(getDb(), id)
+          const currentId = get().currentId
+          await refresh(currentId === id ? null : currentId)
+          set({ error: null, notice: null })
+        }, 'Could not delete the workshop.')
+      },
+
+      updateCurrent: async (patch) => {
+        const current = get().current
+        if (!current) return
+        await run(async () => {
+          const saved = await saveWorkshop(getDb(), { ...current, ...patch })
+          set((s) => ({
+            current: saved,
+            workshops: s.workshops.map((w) =>
+              w.id === saved.id ? { id: saved.id, title: saved.title } : w,
+            ),
+          }))
+        }, 'Could not save the workshop.')
+      },
+
+      exportCurrent: async () => {
+        const id = get().currentId
+        if (!id) return null
+        let file: ExportedFile | null = null
+        await run(async () => {
+          file = await exportWorkshop(getDb(), id)
+          set({ error: null })
+        }, 'Could not export the workshop.')
+        return file
+      },
+
+      importFile: async (file) => {
+        return run(async () => {
+          const w = await importWorkshop(getDb(), file)
+          await refresh(w.id)
+          set({ error: null, notice: `Imported "${w.title}".` })
+        }, 'Could not import the file.')
+      },
+
+      clearMessages: () => set({ error: null, notice: null }),
+    }
+  })
+}
+
+let defaultDb: PlanOnMeDB | null = null
+function getDefaultDb(): PlanOnMeDB {
+  defaultDb ??= new PlanOnMeDB()
+  return defaultDb
+}
+
+/** The app wide workshop store. */
+export const workshopStore = createWorkshopStore(getDefaultDb)
+
+export function useWorkshopStore<T>(selector: (state: WorkshopState) => T): T {
+  return useStore(workshopStore, selector)
+}

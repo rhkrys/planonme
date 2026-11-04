@@ -1,10 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { WorkshopBar } from './components/WorkshopBar'
+import { workshopStore } from './store/workshopStore'
 import { VIEWS, type ViewId } from './views'
 import { Placeholder } from './views/Placeholder'
 
 export default function App() {
   const [view, setView] = useState<ViewId>('plan')
   const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0]
+
+  useEffect(() => {
+    void workshopStore.getState().init()
+  }, [])
 
   return (
     <div className="shell">
@@ -22,6 +28,7 @@ export default function App() {
         ))}
       </nav>
       <main className="content">
+        <WorkshopBar />
         <Placeholder title={current.label} />
       </main>
     </div>
