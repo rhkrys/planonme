@@ -287,7 +287,12 @@ test('clicking a slide shows it on the audience screen', async () => {
   )
   expect(screen.getByTestId('audience-now')).toHaveTextContent('Showing slide 3 of 3.')
   expect(screen.getByRole('img', { name: 'Audience preview: slide 3' })).toBeInTheDocument()
-  expect(screen.getByRole('button', { name: 'Next slide' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Next slide' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  )
+  await userEvent.click(screen.getByRole('button', { name: 'Next slide' }))
+  expect(screen.getByTestId('audience-now')).toHaveTextContent('Showing slide 3 of 3.')
 
   await userEvent.click(screen.getByRole('button', { name: 'Previous slide' }))
   expect(screen.getByTestId('audience-now')).toHaveTextContent('Showing slide 2 of 3.')
@@ -296,6 +301,58 @@ test('clicking a slide shows it on the audience screen', async () => {
   await userEvent.keyboard('l')
   expect(screen.getByRole('button', { name: 'Logo (L)' })).toHaveAttribute('aria-pressed', 'true')
   expect(screen.getByTestId('audience-now')).toHaveTextContent('Logo screen is on.')
+  audienceStore.setState({ slide: null, overlay: 'none' })
+})
+
+test('stepping to the first slide with the keyboard keeps focus on Previous', async () => {
+  const { audienceStore } = await import('../../store/audienceStore')
+  const decks = [deck('d1', 'Intro', 3)]
+  workshopStore.setState({
+    loadSlideDecks: async () => decks,
+    media: { decks: [{ id: 'd1', name: 'Intro', slideCount: 3 }], sounds: [] },
+  })
+  audienceStore.setState({ slide: { deckId: 'd1', index: 1 }, overlay: 'none' })
+  render(<SlidesView />)
+  const previous = await screen.findByRole('button', { name: 'Previous slide' })
+  previous.focus()
+  await userEvent.keyboard('{Enter}')
+  expect(screen.getByTestId('audience-now')).toHaveTextContent('Showing slide 1 of 3.')
+  expect(previous).toHaveAttribute('aria-disabled', 'true')
+  expect(previous).toHaveFocus()
+  // Pressing it again at the first slide does nothing.
+  await userEvent.keyboard('{Enter}')
+  expect(audienceStore.getState().slide).toEqual({ deckId: 'd1', index: 0 })
+  audienceStore.setState({ slide: null, overlay: 'none' })
+})
+
+test('the thumbnail strip scrolls to keep the current slide in view', async () => {
+  const { audienceStore } = await import('../../store/audienceStore')
+  const indexOf = (el: HTMLElement) =>
+    el.parentElement ? Array.from(el.parentElement.children).indexOf(el) : 0
+  const layout = [
+    vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.tagName === 'LI' ? indexOf(this) * 100 : 0
+    }),
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(90),
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300),
+  ]
+  const decks = [deck('d1', 'Intro', 10)]
+  workshopStore.setState({
+    loadSlideDecks: async () => decks,
+    media: { decks: [{ id: 'd1', name: 'Intro', slideCount: 10 }], sounds: [] },
+  })
+  audienceStore.setState({ slide: { deckId: 'd1', index: 0 }, overlay: 'none' })
+  render(<SlidesView />)
+  const strip = await screen.findByRole('list', { name: 'Slides in Intro' })
+  expect(strip.scrollLeft).toBe(0)
+  act(() => audienceStore.getState().showSlide({ deckId: 'd1', index: 7 }))
+  // Slide 8 spans 700 to 790, so the strip scrolls until its right edge is in view.
+  expect(strip.scrollLeft).toBe(490)
+  act(() => audienceStore.getState().showSlide({ deckId: 'd1', index: 2 }))
+  expect(strip.scrollLeft).toBe(200)
+  layout.forEach((s) => s.mockRestore())
   audienceStore.setState({ slide: null, overlay: 'none' })
 })
 

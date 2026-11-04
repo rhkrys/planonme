@@ -153,11 +153,12 @@ select {
   cursor: pointer;
 }
 
-.btn:hover:not(:disabled) {
+.btn:hover:not(:disabled):not([aria-disabled='true']) {
   background: var(--bg);
 }
 
-.btn:disabled {
+.btn:disabled,
+.btn[aria-disabled='true'] {
   opacity: 0.5;
   cursor: default;
 }
@@ -922,6 +923,7 @@ input.minutes {
 }
 
 .thumbs {
+  position: relative;
   list-style: none;
   margin: 0;
   padding: 4px 0 8px;

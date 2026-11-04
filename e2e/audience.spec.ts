@@ -48,8 +48,7 @@ test('the audience window follows the control window and resyncs after reloads',
   const popupPromise = context.waitForEvent('page')
   await page.getByRole('button', { name: 'Open audience window' }).click()
   const popup = await popupPromise
-  await popup.waitForLoadState()
-  expect(popup.url()).toMatch(/\/audience\.html$/)
+  await popup.waitForURL(/\/audience\.html$/)
 
   await expect(page.getByTestId('audience-connection')).toHaveText('Connected')
   await expect(await shownSlide(popup)).toHaveAttribute('alt', 'Slide 1')
@@ -93,6 +92,14 @@ test('the audience window follows the control window and resyncs after reloads',
   await expect(page.getByTestId('audience-connection')).toHaveText('Connected')
   await page.locator('body').press('ArrowRight')
   await expect(popup.getByRole('img', { name: 'Slide 3' })).toBeVisible()
+
+  // After the control window reloads, the button finds the open audience window and does not
+  // load it again, which would flash the waiting screen to the audience.
+  await popup.evaluate(() => ((globalThis as unknown as { marker: number }).marker = 7))
+  await page.getByRole('button', { name: 'Open audience window' }).click()
+  expect(context.pages()).toHaveLength(2)
+  await expect(popup.getByRole('img', { name: 'Slide 3' })).toBeVisible()
+  expect(await popup.evaluate(() => (globalThis as unknown as { marker?: number }).marker)).toBe(7)
 
   // Typing in a text field does not change the slide.
   await page.getByRole('textbox', { name: 'Deck name' }).press('ArrowLeft')

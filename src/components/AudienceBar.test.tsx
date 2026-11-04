@@ -21,17 +21,19 @@ function renderBar() {
 
 test('opens the popup once and then brings it to the front', async () => {
   const focus = vi.fn()
-  const fake = { closed: false, focus } as unknown as Window
+  const replace = vi.fn()
+  const fake = {
+    closed: false,
+    focus,
+    location: { pathname: 'blank', replace },
+  } as unknown as Window
   const open = vi.spyOn(window, 'open').mockReturnValue(fake)
   renderBar()
   expect(screen.getByTestId('audience-connection')).toHaveTextContent('Not connected')
   const button = screen.getByRole('button', { name: 'Open audience window' })
   await userEvent.click(button)
-  expect(open).toHaveBeenCalledWith(
-    '/audience.html',
-    AUDIENCE_WINDOW_NAME,
-    AUDIENCE_WINDOW_FEATURES,
-  )
+  expect(open).toHaveBeenCalledWith('', AUDIENCE_WINDOW_NAME, AUDIENCE_WINDOW_FEATURES)
+  expect(replace).toHaveBeenCalledWith('/audience.html')
   await userEvent.click(button)
   expect(open).toHaveBeenCalledTimes(1)
   expect(focus).toHaveBeenCalledTimes(2)

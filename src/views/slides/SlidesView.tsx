@@ -631,6 +631,23 @@ function Thumbnails({ deck, start }: { deck: SlideDeck; start: number }) {
   const current = useAudienceStore((s) => (s.slide?.deckId === deck.id ? s.slide.index : null))
   const [urls, setUrls] = useState<string[]>([])
   const [broken, setBroken] = useState<ReadonlySet<number>>(new Set())
+  const listRef = useRef<HTMLOListElement>(null)
+
+  // Keep the current slide in view inside the strip when it changes, for example with the arrow
+  // keys. Only the strip scrolls; the page stays where it is.
+  useEffect(() => {
+    const list = listRef.current
+    if (current === null || !list) return
+    const item = list.children[current]
+    if (!(item instanceof HTMLElement)) return
+    // The list is the offset parent (position: relative), so this is the place inside it.
+    const left = item.offsetLeft
+    const right = left + item.offsetWidth
+    if (left < list.scrollLeft) list.scrollLeft = left
+    else if (right > list.scrollLeft + list.clientWidth) {
+      list.scrollLeft = right - list.clientWidth
+    }
+  }, [current])
 
   useEffect(() => {
     if (typeof URL.createObjectURL !== 'function') return
@@ -641,7 +658,7 @@ function Thumbnails({ deck, start }: { deck: SlideDeck; start: number }) {
   }, [deck.slides])
 
   return (
-    <ol className="thumbs" aria-label={`Slides in ${deck.name}`}>
+    <ol className="thumbs" ref={listRef} aria-label={`Slides in ${deck.name}`}>
       {deck.slides.map((_, i) => {
         const n = start + i
         const url = urls[i]

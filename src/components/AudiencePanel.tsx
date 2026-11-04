@@ -25,6 +25,10 @@ export function AudiencePanel({ decks }: { decks: SlideDeck[] | null }) {
   const shownNumber = screenFor({ slide, overlay: 'none' }, counts, title)
   const number = shownNumber.mode === 'slide' ? shownNumber.number : null
   const store = audienceStore.getState()
+  // aria-disabled rather than disabled, so a keyboard user who steps to the first or last slide
+  // with these buttons keeps focus on them.
+  const atStart = total === 0 || (overlay === 'none' && number === 1)
+  const atEnd = total === 0 || (overlay === 'none' && number === total)
 
   let label: string
   if (overlay === 'blank') label = 'Blank screen is on.'
@@ -45,8 +49,10 @@ export function AudiencePanel({ decks }: { decks: SlideDeck[] | null }) {
               className="btn"
               aria-label="Previous slide"
               aria-keyshortcuts="ArrowLeft"
-              disabled={total === 0 || (overlay === 'none' && number === 1)}
-              onClick={() => store.step(-1)}
+              aria-disabled={atStart}
+              onClick={() => {
+                if (!atStart) store.step(-1)
+              }}
             >
               ← Previous
             </button>
@@ -55,8 +61,10 @@ export function AudiencePanel({ decks }: { decks: SlideDeck[] | null }) {
               className="btn"
               aria-label="Next slide"
               aria-keyshortcuts="ArrowRight"
-              disabled={total === 0 || (overlay === 'none' && number === total)}
-              onClick={() => store.step(1)}
+              aria-disabled={atEnd}
+              onClick={() => {
+                if (!atEnd) store.step(1)
+              }}
             >
               Next →
             </button>
