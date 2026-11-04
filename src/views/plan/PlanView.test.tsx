@@ -274,3 +274,23 @@ test('edits the workshop settings', async () => {
   fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-12-01' } })
   await waitFor(() => expect(stored().date).toBe('2026-12-01'))
 })
+
+test('keeps keyboard focus when a delete is cancelled or the last block goes', async () => {
+  const user = userEvent.setup()
+  render(<PlanView />)
+  await addBlock(user, 'Only', '5')
+
+  await user.click(screen.getByRole('button', { name: 'Delete Only' }))
+  await user.click(screen.getByRole('button', { name: 'Cancel' }))
+  expect(screen.getByRole('button', { name: 'Delete Only' })).toHaveFocus()
+
+  await user.click(screen.getByRole('button', { name: 'Delete Only' }))
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('group', { name: /Confirm delete/ })).not.toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Delete Only' })).toHaveFocus()
+
+  await user.click(screen.getByRole('button', { name: 'Delete Only' }))
+  await user.click(screen.getByRole('button', { name: 'Delete block' }))
+  await screen.findByText('No blocks yet.')
+  expect(screen.getByRole('textbox', { name: 'New block title' })).toHaveFocus()
+})

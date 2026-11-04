@@ -78,6 +78,8 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
     // Writes run one at a time, in the order they were asked for. Without this, a slow save
     // could finish after a newer one and overwrite it.
     let queue: Promise<unknown> = Promise.resolve()
+    // Counts calls to updateCurrent, so a finished save can tell if a newer edit exists.
+    let editSeq = 0
     function run(action: () => Promise<void>, failure: string): Promise<boolean> {
       const next = queue.then(() => attempt(action, failure))
       queue = next
@@ -143,12 +145,19 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
         if (!current) return
         // Apply the change right away, so the next patch builds on this one and is not lost.
         const next: Workshop = { ...current, ...patch }
+        const seq = ++editSeq
         set((s) => ({ current: next, pendingSaves: s.pendingSaves + 1 }))
         const ok = await run(async () => {
-          const saved = await updateWorkshop(getDb(), next)
+          // Apply the patch to what is stored now, so a change written in between (such as a
+          // rename from the workshop bar) is kept and not overwritten with older values.
+          const db = getDb()
+          const stored = await getWorkshop(db, next.id)
+          if (!stored) throw new WorkshopNotFoundError()
+          const saved = await updateWorkshop(db, { ...stored, ...patch })
           set((s) => ({
-            // Keep newer unsaved edits in place; they have their own save queued.
-            current: s.current === next ? saved : s.current,
+            // Only the newest edit updates the screen. Older ones would hide newer unsaved
+            // edits, which have their own save queued.
+            current: seq === editSeq && s.current?.id === saved.id ? saved : s.current,
             workshops: s.workshops.map((w) =>
               w.id === saved.id ? { id: saved.id, title: saved.title } : w,
             ),

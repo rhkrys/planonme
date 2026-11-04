@@ -16,6 +16,7 @@ import {
 } from './timing'
 
 const UNTITLED = 'Untitled block'
+const NEW_BLOCK_TITLE_ID = 'new-block-title'
 
 function displayTitle(b: Block): string {
   return b.title.trim() || UNTITLED
@@ -233,7 +234,7 @@ function TimeSummary({ schedule }: { schedule: Schedule }) {
   )
 }
 
-type Focus = { id: string; action: 'up' | 'down' | 'edit' }
+type Focus = { id: string; action: 'up' | 'down' | 'edit' | 'delete' } | { id: null }
 
 function BlockList({ blocks, schedule }: { blocks: Block[]; schedule: Schedule }) {
   const [editingId, setEditingId] = useState<string | null>(null)
@@ -244,11 +245,17 @@ function BlockList({ blocks, schedule }: { blocks: Block[]; schedule: Schedule }
   const [focus, setFocus] = useState<Focus | null>(null)
   const listRef = useRef<HTMLOListElement>(null)
 
-  // After a keyboard move or an edit, put focus back on the block's matching button, so
-  // keyboard users keep their place. A move button at the top or bottom is disabled, so fall
-  // back to another button of the same block.
+  // After a keyboard move, an edit or a delete, put focus back on the block's matching
+  // button, so keyboard users keep their place. A move button at the top or bottom is
+  // disabled, so fall back to another button of the same block. With no block left to
+  // focus, go to the add form.
   useEffect(() => {
-    if (!focus || !listRef.current) return
+    if (!focus) return
+    setFocus(null)
+    if (focus.id === null || !listRef.current) {
+      document.getElementById(NEW_BLOCK_TITLE_ID)?.focus()
+      return
+    }
     const buttons = Array.from(
       listRef.current.querySelectorAll<HTMLButtonElement>('button[data-action]'),
     )
@@ -257,8 +264,12 @@ function BlockList({ blocks, schedule }: { blocks: Block[]; schedule: Schedule }
       mine.find((b) => b.dataset.action === focus.action && !b.disabled) ??
       mine.find((b) => !b.disabled)
     target?.focus()
-    setFocus(null)
   }, [focus])
+
+  function cancelDelete(id: string) {
+    setDeletingId(null)
+    setFocus({ id, action: 'delete' })
+  }
 
   function move(id: string, to: number, how: 'keyboard' | 'drag') {
     const from = blocks.findIndex((b) => b.id === id)
@@ -364,7 +375,7 @@ function BlockList({ blocks, schedule }: { blocks: Block[]; schedule: Schedule }
                     role="group"
                     aria-label={`Confirm delete block ${name}`}
                     onKeyDown={(e) => {
-                      if (e.key === 'Escape') setDeletingId(null)
+                      if (e.key === 'Escape') cancelDelete(b.id)
                     }}
                   >
                     <span>Delete "{name}" with its notes and script?</span>
@@ -376,7 +387,7 @@ function BlockList({ blocks, schedule }: { blocks: Block[]; schedule: Schedule }
                         setDeletingId(null)
                         saveBlocks((list) => list.filter((x) => x.id !== b.id))
                         setAnnounce(`Deleted ${name}.`)
-                        if (neighbour) setFocus({ id: neighbour.id, action: 'edit' })
+                        setFocus(neighbour ? { id: neighbour.id, action: 'edit' } : { id: null })
                       }}
                     >
                       Delete block
@@ -385,7 +396,7 @@ function BlockList({ blocks, schedule }: { blocks: Block[]; schedule: Schedule }
                       type="button"
                       className="btn"
                       autoFocus
-                      onClick={() => setDeletingId(null)}
+                      onClick={() => cancelDelete(b.id)}
                     >
                       Cancel
                     </button>
@@ -432,6 +443,8 @@ function BlockList({ blocks, schedule }: { blocks: Block[]; schedule: Schedule }
                   type="button"
                   className="btn"
                   aria-label={`Delete ${name}`}
+                  data-action="delete"
+                  data-block={b.id}
                   onClick={() => setDeletingId(b.id)}
                 >
                   Delete
@@ -610,9 +623,9 @@ function AddBlockForm({ count }: { count: number }) {
       <h2>Add a block</h2>
       <div className="add-row">
         <div className="field wide">
-          <label htmlFor="new-block-title">New block title</label>
+          <label htmlFor={NEW_BLOCK_TITLE_ID}>New block title</label>
           <input
-            id="new-block-title"
+            id={NEW_BLOCK_TITLE_ID}
             ref={titleRef}
             type="text"
             value={title}

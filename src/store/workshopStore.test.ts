@@ -150,3 +150,20 @@ test('counts saves that are still being written', async () => {
   expect(store.getState().pendingSaves).toBe(0)
   expect(store.getState().current?.durationMin).toBe(45)
 })
+
+test('an edit queued behind a rename keeps the new name and the edit', async () => {
+  const store = makeStore()
+  await store.getState().init()
+  const id = store.getState().currentId
+  if (!id) throw new Error('no current workshop')
+  const rename = store.getState().renameWorkshop(id, 'Renamed')
+  const edit = store.getState().updateCurrent({ durationMin: 90 })
+  await Promise.all([rename, edit])
+  expect(store.getState().current?.title).toBe('Renamed')
+  expect(store.getState().current?.durationMin).toBe(90)
+
+  const reloaded = makeStore()
+  await reloaded.getState().init()
+  expect(reloaded.getState().current?.title).toBe('Renamed')
+  expect(reloaded.getState().current?.durationMin).toBe(90)
+})
