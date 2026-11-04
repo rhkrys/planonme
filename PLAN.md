@@ -5,11 +5,11 @@ small window you can share in Zoom without taking over the desktop.
 
 ## Scope by version
 
-| Version | Platform | Users | Slide import | Audience window |
-|---|---|---|---|---|
-| **MVP (v1)** | Browser (Chrome) | Solo, no sign-in | PDF export from PPT, Google Slides, Canva, Gamma | Basic popup window |
-| **v2** | Browser + Rust desktop (Tauri) | Solo + co-facilitators | Adds Google and Canva sign-in imports, Gamma API | Native always-on-top window (desktop), Document PiP (browser) |
-| **v3** | Both | Teams | PPTX conversion, live embeds | Phone remote control |
+| Version      | Platform                       | Users                  | Slide import                                     | Audience window                                               |
+| ------------ | ------------------------------ | ---------------------- | ------------------------------------------------ | ------------------------------------------------------------- |
+| **MVP (v1)** | Browser (Chrome)               | Solo, no sign-in       | PDF export from PPT, Google Slides, Canva, Gamma | Basic popup window                                            |
+| **v2**       | Browser + Rust desktop (Tauri) | Solo + co-facilitators | Adds Google and Canva sign-in imports, Gamma API | Native always-on-top window (desktop), Document PiP (browser) |
+| **v3**       | Both                           | Teams                  | PPTX conversion, live embeds                     | Phone remote control                                          |
 
 ## Tech stack (MVP)
 
@@ -69,8 +69,8 @@ Each step is one small commit with passing gates.
   - global hotkeys, so GO and sound pads work while Zoom has focus;
   - workshops and media saved as normal files in a folder;
   - signed installers and auto-update.
-  The browser build stays. Shared code lives in one place; only storage and window control get a
-  per-platform adapter (`platform/web.ts`, `platform/tauri.ts`).
+    The browser build stays. Shared code lives in one place; only storage and window control get a
+    per-platform adapter (`platform/web.ts`, `platform/tauri.ts`).
 - **Sign-in imports.** Google Slides (Slides API, slide images), Canva (Connect API export),
   Gamma (API export).
 - **Co-facilitators.** Accounts and cloud sync (e.g. Supabase), shared workshops, live cursor in
