@@ -210,3 +210,58 @@ test('a media read failure does not block the workshop', async () => {
   expect(store.getState().media).toBeNull()
   expect(store.getState().error).toBeNull()
 })
+
+test('slide deck actions keep current, media and the deck list in step', async () => {
+  const store = makeStore()
+  await store.getState().init()
+  const id = store.getState().currentId ?? ''
+  const png = () => new Blob([fakePngBytes()], { type: 'image/png' })
+
+  expect(
+    await store.getState().addSlideDeck(id, { name: 'A', source: 'pdf', slides: [png()] }),
+  ).toBe(true)
+  expect(store.getState().notice).toBe('Added "A" with 1 slide.')
+  expect(
+    await store
+      .getState()
+      .addSlideDeck(id, { name: 'B', source: 'gslides', slides: [png(), png()] }),
+  ).toBe(true)
+  expect(store.getState().media?.decks.map((d) => [d.name, d.slideCount])).toEqual([
+    ['A', 1],
+    ['B', 2],
+  ])
+  const [a, b] = store.getState().media?.decks ?? []
+
+  expect(await store.getState().moveSlideDeck(b?.id ?? '', -1)).toBe(true)
+  expect(store.getState().current?.slideDeckIds).toEqual([b?.id, a?.id])
+  expect(store.getState().media?.decks.map((d) => d.name)).toEqual(['B', 'A'])
+  expect((await store.getState().loadSlideDecks())?.map((d) => d.slides.length)).toEqual([2, 1])
+
+  // A block edit made meanwhile is kept.
+  const edit = store.getState().updateCurrent({ title: 'Edited' })
+  expect(await store.getState().renameSlideDeck(a?.id ?? '', 'Alpha')).toBe(true)
+  await edit
+  expect(store.getState().current?.title).toBe('Edited')
+  expect(store.getState().media?.decks.map((d) => d.name)).toEqual(['B', 'Alpha'])
+
+  expect(await store.getState().deleteSlideDeck(b?.id ?? '')).toBe(true)
+  expect(store.getState().current?.slideDeckIds).toEqual([a?.id])
+  expect(store.getState().media?.decks.map((d) => d.name)).toEqual(['Alpha'])
+
+  expect(await store.getState().renameSlideDeck('missing', 'X')).toBe(false)
+  expect(store.getState().error).toMatch(/no longer exists/)
+})
+
+test('adding a deck to a workshop that is no longer current leaves the current one alone', async () => {
+  const store = makeStore()
+  await store.getState().init()
+  const first = store.getState().currentId ?? ''
+  await store.getState().createWorkshop('Other')
+  const png = new Blob([fakePngBytes()], { type: 'image/png' })
+  expect(
+    await store.getState().addSlideDeck(first, { name: 'A', source: 'pdf', slides: [png] }),
+  ).toBe(true)
+  expect(store.getState().media?.decks).toEqual([])
+  await store.getState().selectWorkshop(first)
+  expect(store.getState().media?.decks.map((d) => d.name)).toEqual(['A'])
+})

@@ -5,6 +5,7 @@ import { VIEWS, type ViewId } from './views'
 import { Placeholder } from './views/Placeholder'
 import { PlanView } from './views/plan/PlanView'
 import { ScriptView } from './views/script/ScriptView'
+import { SlidesView } from './views/slides/SlidesView'
 
 export default function App() {
   const [view, setView] = useState<ViewId>('plan')
@@ -44,6 +45,8 @@ export default function App() {
           <PlanView />
         ) : current.id === 'script' ? (
           <ScriptView />
+        ) : current.id === 'slides' ? (
+          <SlidesView />
         ) : (
           <Placeholder title={current.label} />
         )}

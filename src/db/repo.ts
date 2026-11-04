@@ -14,6 +14,22 @@ export class WorkshopNotFoundError extends Error {
   }
 }
 
+/** The slide deck is gone, for example because another tab deleted it. */
+export class DeckNotFoundError extends Error {
+  constructor() {
+    super('This slide deck no longer exists. It may have been deleted in another tab.')
+    this.name = 'DeckNotFoundError'
+  }
+}
+
+/** Adding media would go over one of the limits in LIMITS. The message says which. */
+export class MediaLimitError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'MediaLimitError'
+  }
+}
+
 export function blankWorkshop(title: string): Workshop {
   const now = Date.now()
   return {
@@ -132,15 +148,83 @@ export async function addSlideDeck(
   workshopId: string,
   deck: Omit<SlideDeck, 'id' | 'workshopId'>,
 ): Promise<SlideDeck> {
-  const full: SlideDeck = { ...deck, id: newId(), workshopId }
+  const full: SlideDeck = {
+    ...deck,
+    name: normalizeTitle(deck.name, 'Untitled deck'),
+    id: newId(),
+    workshopId,
+  }
   await db.transaction('rw', db.workshops, db.slideDecks, async () => {
     const w = await getWorkshop(db, workshopId)
-    if (!w) throw new Error('Workshop not found')
-    if (w.slideDeckIds.length >= LIMITS.maxDecks) throw new Error('Too many slide decks')
+    if (!w) throw new WorkshopNotFoundError()
+    if (w.slideDeckIds.length >= LIMITS.maxDecks) {
+      throw new MediaLimitError(
+        `A workshop can have up to ${LIMITS.maxDecks} slide decks. Delete one first.`,
+      )
+    }
+    if (full.slides.length > LIMITS.maxSlidesPerDeck) {
+      throw new MediaLimitError(`A slide deck can have up to ${LIMITS.maxSlidesPerDeck} slides.`)
+    }
+    const existing = (await listSlideDecks(db, w)).reduce((sum, d) => sum + d.slides.length, 0)
+    if (existing + full.slides.length > LIMITS.maxSlidesTotal) {
+      throw new MediaLimitError(
+        `A workshop can have up to ${LIMITS.maxSlidesTotal} slides. Delete a deck first.`,
+      )
+    }
     await db.slideDecks.add(full)
     await saveWorkshop(db, { ...w, slideDeckIds: [...w.slideDeckIds, full.id] })
   })
   return full
+}
+
+/** Renames a slide deck. */
+export async function renameSlideDeck(db: PlanOnMeDB, deckId: string, name: string): Promise<void> {
+  await db.transaction('rw', db.slideDecks, async () => {
+    const deck = normalizeSlideDeck(await db.slideDecks.get(deckId))
+    if (!deck) throw new DeckNotFoundError()
+    await db.slideDecks.put({ ...deck, name: normalizeTitle(name, 'Untitled deck') })
+  })
+}
+
+/** Deletes a slide deck and removes it from its workshop. */
+export async function deleteSlideDeck(
+  db: PlanOnMeDB,
+  workshopId: string,
+  deckId: string,
+): Promise<void> {
+  await db.transaction('rw', db.workshops, db.slideDecks, async () => {
+    const row: unknown = await db.slideDecks.get(deckId)
+    const deck = normalizeSlideDeck(row)
+    if (deck && deck.workshopId !== workshopId) throw new DeckNotFoundError()
+    await db.slideDecks.delete(deckId)
+    const w = await getWorkshop(db, workshopId)
+    if (w && w.slideDeckIds.includes(deckId)) {
+      await saveWorkshop(db, { ...w, slideDeckIds: w.slideDeckIds.filter((id) => id !== deckId) })
+    }
+  })
+}
+
+/**
+ * Moves a slide deck up (negative delta) or down (positive delta) in its workshop. Returns the
+ * new order of deck ids. Ids of decks that no longer exist are dropped on the way.
+ */
+export async function moveSlideDeck(
+  db: PlanOnMeDB,
+  workshopId: string,
+  deckId: string,
+  delta: number,
+): Promise<string[]> {
+  return db.transaction('rw', db.workshops, db.slideDecks, async () => {
+    const w = await getWorkshop(db, workshopId)
+    if (!w) throw new WorkshopNotFoundError()
+    const ids = (await listSlideDecks(db, w)).map((d) => d.id)
+    const from = ids.indexOf(deckId)
+    if (from === -1) throw new DeckNotFoundError()
+    const to = Math.min(ids.length - 1, Math.max(0, from + Math.trunc(delta)))
+    ids.splice(to, 0, ...ids.splice(from, 1))
+    const saved = await saveWorkshop(db, { ...w, slideDeckIds: ids })
+    return saved.slideDeckIds
+  })
 }
 
 /** Adds a sound to a workshop. */

@@ -3,21 +3,30 @@ import { createStore, type StoreApi } from 'zustand/vanilla'
 import { BackupError, exportWorkshop, importWorkshop, type ExportedFile } from '../db/backup'
 import { PlanOnMeDB } from '../db/db'
 import {
+  addSlideDeck,
   createWorkshop,
+  DeckNotFoundError,
+  deleteSlideDeck,
   deleteWorkshop,
   getCurrentWorkshopId,
   getMediaSummary,
   getWorkshop,
+  listSlideDecks,
   listWorkshops,
+  MediaLimitError,
+  moveSlideDeck,
+  renameSlideDeck,
   renameWorkshop,
   setCurrentWorkshopId,
   updateWorkshop,
   WorkshopNotFoundError,
   type MediaSummary,
 } from '../db/repo'
-import type { Workshop, WorkshopSummary } from '../db/types'
+import type { SlideDeck, Workshop, WorkshopSummary } from '../db/types'
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error'
+
+export type NewSlideDeck = Omit<SlideDeck, 'id' | 'workshopId'>
 
 export type WorkshopPatch = Partial<Pick<Workshop, 'title' | 'date' | 'durationMin' | 'blocks'>>
 
@@ -48,16 +57,35 @@ export interface WorkshopState {
   clearMessages: () => void
   /** Reloads the media summary, for example after adding a slide deck or a sound. */
   refreshMedia: () => Promise<void>
+  /** The current workshop's slide decks with their images, or null if they could not be read. */
+  loadSlideDecks: () => Promise<SlideDeck[] | null>
+  /** Adds a deck to a workshop (which may no longer be the current one). True on success. */
+  addSlideDeck: (workshopId: string, deck: NewSlideDeck) => Promise<boolean>
+  renameSlideDeck: (deckId: string, name: string) => Promise<boolean>
+  deleteSlideDeck: (deckId: string) => Promise<boolean>
+  /** Moves a deck of the current workshop up (-1) or down (+1). */
+  moveSlideDeck: (deckId: string, delta: number) => Promise<boolean>
 }
 
 export const FIRST_WORKSHOP_TITLE = 'My workshop'
 
 function describe(err: unknown, fallback: string): string {
-  if (err instanceof BackupError || err instanceof WorkshopNotFoundError) return err.message
+  if (
+    err instanceof BackupError ||
+    err instanceof WorkshopNotFoundError ||
+    err instanceof DeckNotFoundError ||
+    err instanceof MediaLimitError
+  ) {
+    return err.message
+  }
   if (err instanceof Error && err.name === 'QuotaExceededError') {
     return 'Browser storage is full. Delete some workshops or media and try again.'
   }
   return fallback
+}
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`
 }
 
 export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopState> {
@@ -82,6 +110,22 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
         console.error(err)
         return null
       }
+    }
+
+    /**
+     * After a deck change, takes the stored deck order into the current workshop and reloads
+     * the media summary. Other fields of current are left alone, so unsaved edits stay.
+     */
+    async function syncDecks(workshopId: string): Promise<void> {
+      if (get().current?.id !== workshopId) return
+      const stored = await getWorkshop(getDb(), workshopId)
+      if (!stored) throw new WorkshopNotFoundError()
+      const media = await loadMedia(stored)
+      set((s) =>
+        s.current?.id === workshopId
+          ? { current: { ...s.current, slideDeckIds: stored.slideDeckIds }, media }
+          : {},
+      )
     }
 
     async function attempt(action: () => Promise<void>, failure: string): Promise<boolean> {
@@ -221,6 +265,60 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
           const media = await loadMedia(current)
           if (get().current?.id === current.id) set({ media })
         }, 'Could not read slides and sounds.')
+      },
+
+      loadSlideDecks: async () => {
+        let decks: SlideDeck[] | null = null
+        await run(async () => {
+          const id = get().currentId
+          if (!id) {
+            decks = []
+            return
+          }
+          const stored = await getWorkshop(getDb(), id)
+          decks = stored ? await listSlideDecks(getDb(), stored) : []
+        }, 'Could not read the slides.')
+        return decks
+      },
+
+      addSlideDeck: async (workshopId, deck) => {
+        return run(async () => {
+          const added = await addSlideDeck(getDb(), workshopId, deck)
+          await syncDecks(workshopId)
+          set({
+            error: null,
+            notice: `Added "${added.name}" with ${plural(added.slides.length, 'slide')}.`,
+          })
+        }, 'Could not save the slides.')
+      },
+
+      renameSlideDeck: async (deckId, name) => {
+        return run(async () => {
+          await renameSlideDeck(getDb(), deckId, name)
+          const id = get().currentId
+          if (id) await syncDecks(id)
+          set({ error: null, notice: null })
+        }, 'Could not rename the slide deck.')
+      },
+
+      deleteSlideDeck: async (deckId) => {
+        return run(async () => {
+          const id = get().currentId
+          if (!id) return
+          await deleteSlideDeck(getDb(), id, deckId)
+          await syncDecks(id)
+          set({ error: null, notice: null })
+        }, 'Could not delete the slide deck.')
+      },
+
+      moveSlideDeck: async (deckId, delta) => {
+        return run(async () => {
+          const id = get().currentId
+          if (!id) return
+          await moveSlideDeck(getDb(), id, deckId, delta)
+          await syncDecks(id)
+          set({ error: null, notice: null })
+        }, 'Could not move the slide deck.')
       },
     }
   })
