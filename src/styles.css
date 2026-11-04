@@ -10,6 +10,7 @@
   --warn: #d97706;
   --ok: #16a34a;
   --radius: 8px;
+  color-scheme: light dark;
   font-family:
     system-ui,
     -apple-system,
@@ -202,4 +203,291 @@ select {
   clip: rect(0, 0, 0, 0);
   white-space: nowrap;
   border: 0;
+}
+
+.message.warn {
+  border-color: var(--warn);
+  color: var(--warn);
+  margin: 0;
+}
+
+textarea,
+input[type='date'] {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  max-width: 100%;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.plan {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 960px;
+}
+
+.plan h1 {
+  margin: 0;
+}
+
+.plan-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.save-state {
+  font-size: 0.875rem;
+}
+
+.plan h2 {
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+
+.empty {
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.empty p {
+  margin: 0;
+}
+
+.settings {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 16px;
+  margin: 0;
+  padding: 12px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.settings legend {
+  padding: 0 4px;
+  font-weight: 600;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.field label {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.field input[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.field-error {
+  margin: 0;
+  font-size: 0.875rem;
+  color: var(--danger);
+}
+
+input.minutes {
+  width: 7rem;
+}
+
+.time-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.time-summary p {
+  margin: 0;
+}
+
+.time-total {
+  font-weight: 600;
+}
+
+.time-left {
+  color: var(--ok);
+}
+
+.meter {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  background: var(--accent);
+}
+
+.meter.over .meter-fill {
+  background: var(--warn);
+}
+
+.hint {
+  margin: 0;
+  font-size: 0.875rem;
+}
+
+.blocks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.block {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.block.kind-exercise {
+  border-left-color: var(--ok);
+}
+
+.block.kind-break {
+  border-left-color: var(--muted);
+}
+
+.block.kind-discussion {
+  border-left-color: var(--warn);
+}
+
+.block.past-end {
+  border-color: var(--warn);
+}
+
+.block.dragging {
+  opacity: 0.5;
+}
+
+.block.drop-target {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
+.block.editing {
+  display: block;
+}
+
+.grip {
+  cursor: grab;
+  color: var(--muted);
+  user-select: none;
+  padding-top: 2px;
+}
+
+.block-start {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  min-width: 3.5rem;
+  padding-top: 2px;
+}
+
+.block-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.block-main p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.block-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.block-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.kind-badge,
+.past-end-badge {
+  font-size: 0.75rem;
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.past-end-badge {
+  border-color: var(--warn);
+  color: var(--warn);
+}
+
+.block-length {
+  font-variant-numeric: tabular-nums;
+}
+
+.block-notes {
+  white-space: pre-wrap;
+  font-size: 0.875rem;
+}
+
+.block-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.btn.icon {
+  min-width: 2.25rem;
+}
+
+.block-form,
+.add-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.field.wide {
+  flex: 1 1 16rem;
+}
+
+.block-form .field.wide,
+.block-form .inline-form.wide {
+  flex-basis: 100%;
+}
+
+.add-block {
+  padding: 12px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

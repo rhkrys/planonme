@@ -28,6 +28,8 @@ export interface WorkshopState {
   error: string | null
   /** A short success message for the user, or null. */
   notice: string | null
+  /** Edits of the current workshop that are not written to storage yet. */
+  pendingSaves: number
   init: () => Promise<void>
   createWorkshop: (title: string) => Promise<void>
   selectWorkshop: (id: string) => Promise<void>
@@ -89,6 +91,7 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
       current: null,
       error: null,
       notice: null,
+      pendingSaves: 0,
 
       init: async () => {
         if (get().status === 'loading' || get().status === 'ready') return
@@ -140,7 +143,7 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
         if (!current) return
         // Apply the change right away, so the next patch builds on this one and is not lost.
         const next: Workshop = { ...current, ...patch }
-        set({ current: next })
+        set((s) => ({ current: next, pendingSaves: s.pendingSaves + 1 }))
         const ok = await run(async () => {
           const saved = await updateWorkshop(getDb(), next)
           set((s) => ({
@@ -157,6 +160,7 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
           await attempt(() => refresh(get().currentId), 'Could not open saved workshops.')
           set({ error })
         }
+        set((s) => ({ pendingSaves: Math.max(0, s.pendingSaves - 1) }))
       },
 
       exportCurrent: async () => {

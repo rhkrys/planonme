@@ -3,6 +3,7 @@ import { WorkshopBar } from './components/WorkshopBar'
 import { workshopStore } from './store/workshopStore'
 import { VIEWS, type ViewId } from './views'
 import { Placeholder } from './views/Placeholder'
+import { PlanView } from './views/plan/PlanView'
 
 export default function App() {
   const [view, setView] = useState<ViewId>('plan')
@@ -10,6 +11,15 @@ export default function App() {
 
   useEffect(() => {
     void workshopStore.getState().init()
+  }, [])
+
+  // Ask before closing or reloading the tab while an edit is still being written.
+  useEffect(() => {
+    function onBeforeUnload(e: BeforeUnloadEvent) {
+      if (workshopStore.getState().pendingSaves > 0) e.preventDefault()
+    }
+    window.addEventListener('beforeunload', onBeforeUnload)
+    return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [])
 
   return (
@@ -29,7 +39,7 @@ export default function App() {
       </nav>
       <main className="content">
         <WorkshopBar />
-        <Placeholder title={current.label} />
+        {current.id === 'plan' ? <PlanView /> : <Placeholder title={current.label} />}
       </main>
     </div>
   )
