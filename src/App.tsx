@@ -4,6 +4,7 @@ import { workshopStore } from './store/workshopStore'
 import { VIEWS, type ViewId } from './views'
 import { Placeholder } from './views/Placeholder'
 import { PlanView } from './views/plan/PlanView'
+import { ScriptView } from './views/script/ScriptView'
 
 export default function App() {
   const [view, setView] = useState<ViewId>('plan')
@@ -39,7 +40,13 @@ export default function App() {
       </nav>
       <main className="content">
         <WorkshopBar />
-        {current.id === 'plan' ? <PlanView /> : <Placeholder title={current.label} />}
+        {current.id === 'plan' ? (
+          <PlanView />
+        ) : current.id === 'script' ? (
+          <ScriptView />
+        ) : (
+          <Placeholder title={current.label} />
+        )}
       </main>
     </div>
   )

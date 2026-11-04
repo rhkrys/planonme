@@ -1,6 +1,8 @@
 // @vitest-environment node
 import { BACKUP_FORMAT } from '../db/backup'
 import { PlanOnMeDB } from '../db/db'
+import { addSlideDeck, addSound } from '../db/repo'
+import { fakePngBytes, makeWav } from '../test/media'
 import { createWorkshopStore, FIRST_WORKSHOP_TITLE } from './workshopStore'
 
 let db: PlanOnMeDB
@@ -166,4 +168,45 @@ test('an edit queued behind a rename keeps the new name and the edit', async () 
   await reloaded.getState().init()
   expect(reloaded.getState().current?.title).toBe('Renamed')
   expect(reloaded.getState().current?.durationMin).toBe(90)
+})
+
+test('loads slide and sound names for the current workshop', async () => {
+  const store = makeStore()
+  await store.getState().init()
+  const id = store.getState().currentId
+  if (!id) throw new Error('no workshop')
+  expect(store.getState().media).toEqual({ decks: [], sounds: [] })
+
+  const png = new Blob([fakePngBytes()], { type: 'image/png' })
+  await addSlideDeck(db, id, { name: 'Intro', source: 'pdf', slides: [png, png, png] })
+  await addSound(db, id, {
+    name: 'Ding',
+    kind: 'sfx',
+    blob: new Blob([makeWav()], { type: 'audio/wav' }),
+    loop: false,
+    volume: 1,
+    hotkey: '',
+    color: '',
+  })
+  await store.getState().refreshMedia()
+  expect(store.getState().media).toMatchObject({
+    decks: [{ name: 'Intro', slideCount: 3 }],
+    sounds: [{ name: 'Ding', kind: 'sfx' }],
+  })
+
+  // A new workshop starts with no media.
+  await store.getState().createWorkshop('Other')
+  expect(store.getState().media).toEqual({ decks: [], sounds: [] })
+})
+
+test('a media read failure does not block the workshop', async () => {
+  const store = makeStore()
+  await store.getState().init()
+  vi.spyOn(db.slideDecks, 'where').mockImplementation(() => {
+    throw new Error('broken')
+  })
+  await store.getState().createWorkshop('Still works')
+  expect(store.getState().current?.title).toBe('Still works')
+  expect(store.getState().media).toBeNull()
+  expect(store.getState().error).toBeNull()
 })

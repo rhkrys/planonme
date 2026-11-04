@@ -491,3 +491,258 @@ input.minutes {
   flex-direction: column;
   gap: 8px;
 }
+
+.script-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.script-view h1 {
+  margin: 0;
+}
+
+.script-layout {
+  display: grid;
+  grid-template-columns: minmax(10rem, 14rem) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+@media (max-width: 760px) {
+  .script-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.script-blocks ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.script-block {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-left: 4px solid transparent;
+  border-radius: var(--radius);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.script-block:hover {
+  background: var(--bg);
+}
+
+.script-block.active {
+  border-left-color: var(--accent);
+  border-color: var(--accent);
+}
+
+.script-block-title {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.script-block-meta {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.script-block-problems {
+  font-size: 0.8rem;
+  color: var(--warn);
+}
+
+.script-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.script-editor-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.script-editor h2 {
+  margin: 0;
+  font-size: 1.15rem;
+  overflow-wrap: anywhere;
+}
+
+.script-editor h3 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+.script-goal {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.script-panes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+.script-input-wrap {
+  position: relative;
+}
+
+.script-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  min-height: 16rem;
+}
+
+.cue-suggestions {
+  position: absolute;
+  z-index: 10;
+  margin: 0;
+  padding: 4px;
+  list-style: none;
+  min-width: 16rem;
+  max-width: 100%;
+  max-height: 16rem;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 6px 20px rgb(0 0 0 / 0.2);
+}
+
+.cue-option {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.cue-option.active {
+  background: var(--accent);
+  color: var(--accent-text);
+}
+
+.cue-option-label {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: nowrap;
+}
+
+.cue-option-detail {
+  font-size: 0.8rem;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.script-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.script-preview {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  max-height: 24rem;
+  overflow-y: auto;
+}
+
+.script-preview p {
+  margin: 0;
+}
+
+.script-preview-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.6;
+}
+
+.cue {
+  padding: 1px 4px;
+  border-radius: 4px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: inherit;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+}
+
+.cue.cue-sfx,
+.cue.cue-music {
+  border-color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+}
+
+.cue.cue-timer {
+  border-color: var(--muted);
+  background: color-mix(in srgb, var(--muted) 18%, transparent);
+}
+
+.cue.bad {
+  border-color: var(--warn);
+  border-style: dashed;
+  background: color-mix(in srgb, var(--warn) 22%, transparent);
+}
+
+.script-problems ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.script-problems p {
+  margin: 0;
+}
+
+.problem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  border: 1px solid var(--warn);
+  border-radius: var(--radius);
+  background: var(--panel);
+  cursor: pointer;
+}
+
+.problem:hover {
+  background: var(--bg);
+}
+
+.problem-where code {
+  overflow-wrap: anywhere;
+}
+
+.problem-message {
+  color: var(--warn);
+  font-size: 0.875rem;
+}

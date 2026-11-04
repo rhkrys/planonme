@@ -2,7 +2,7 @@ import type { PlanOnMeDB } from './db'
 import { newId } from './ids'
 import { LIMITS } from './limits'
 import { normalizeSlideDeck, normalizeSound, normalizeTitle, normalizeWorkshop } from './normalize'
-import type { SlideDeck, Sound, Workshop, WorkshopSummary } from './types'
+import type { SlideDeck, Sound, SoundKind, Workshop, WorkshopSummary } from './types'
 
 const CURRENT_KEY = 'currentWorkshopId'
 
@@ -96,6 +96,26 @@ export async function listSounds(db: PlanOnMeDB, workshop: Workshop): Promise<So
   const rows: unknown[] = await db.sounds.where('workshopId').equals(workshop.id).toArray()
   const sounds = rows.map(normalizeSound).filter((s): s is Sound => s !== null)
   return orderById(sounds, workshop.soundIds)
+}
+
+/** Names and counts of a workshop's slides and sounds, without the media itself. */
+export interface MediaSummary {
+  /** In the order of workshop.slideDeckIds. */
+  decks: { id: string; name: string; slideCount: number }[]
+  /** In the order of workshop.soundIds. */
+  sounds: { id: string; name: string; kind: SoundKind }[]
+}
+
+/** Lists the slide decks and sounds of a workshop for cue checks and autocomplete. */
+export async function getMediaSummary(db: PlanOnMeDB, workshop: Workshop): Promise<MediaSummary> {
+  const [decks, sounds] = await Promise.all([
+    listSlideDecks(db, workshop),
+    listSounds(db, workshop),
+  ])
+  return {
+    decks: decks.map((d) => ({ id: d.id, name: d.name, slideCount: d.slides.length })),
+    sounds: sounds.map((s) => ({ id: s.id, name: s.name, kind: s.kind })),
+  }
 }
 
 function orderById<T extends { id: string }>(items: T[], order: string[]): T[] {

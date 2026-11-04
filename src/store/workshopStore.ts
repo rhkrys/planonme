@@ -6,12 +6,14 @@ import {
   createWorkshop,
   deleteWorkshop,
   getCurrentWorkshopId,
+  getMediaSummary,
   getWorkshop,
   listWorkshops,
   renameWorkshop,
   setCurrentWorkshopId,
   updateWorkshop,
   WorkshopNotFoundError,
+  type MediaSummary,
 } from '../db/repo'
 import type { Workshop, WorkshopSummary } from '../db/types'
 
@@ -30,6 +32,11 @@ export interface WorkshopState {
   notice: string | null
   /** Edits of the current workshop that are not written to storage yet. */
   pendingSaves: number
+  /**
+   * Names and counts of the current workshop's slides and sounds, or null while they are not
+   * loaded or could not be read.
+   */
+  media: MediaSummary | null
   init: () => Promise<void>
   createWorkshop: (title: string) => Promise<void>
   selectWorkshop: (id: string) => Promise<void>
@@ -39,6 +46,8 @@ export interface WorkshopState {
   exportCurrent: () => Promise<ExportedFile | null>
   importFile: (file: Blob) => Promise<boolean>
   clearMessages: () => void
+  /** Reloads the media summary, for example after adding a slide deck or a sound. */
+  refreshMedia: () => Promise<void>
 }
 
 export const FIRST_WORKSHOP_TITLE = 'My workshop'
@@ -60,8 +69,19 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
       const wanted = preferredId && workshops.some((w) => w.id === preferredId) ? preferredId : null
       const id = wanted ?? workshops[0]?.id ?? null
       const current = id ? await getWorkshop(db, id) : null
-      set({ workshops, currentId: current?.id ?? null, current })
+      const media = current ? await loadMedia(current) : null
+      set({ workshops, currentId: current?.id ?? null, current, media })
       await setCurrentWorkshopId(db, current?.id ?? null)
+    }
+
+    /** Media names are only used for hints, so a failure here never blocks the workshop. */
+    async function loadMedia(workshop: Workshop): Promise<MediaSummary | null> {
+      try {
+        return await getMediaSummary(getDb(), workshop)
+      } catch (err) {
+        console.error(err)
+        return null
+      }
     }
 
     async function attempt(action: () => Promise<void>, failure: string): Promise<boolean> {
@@ -94,6 +114,7 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
       error: null,
       notice: null,
       pendingSaves: 0,
+      media: null,
 
       init: async () => {
         if (get().status === 'loading' || get().status === 'ready') return
@@ -192,6 +213,15 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
       },
 
       clearMessages: () => set({ error: null, notice: null }),
+
+      refreshMedia: async () => {
+        await run(async () => {
+          const current = get().current
+          if (!current) return
+          const media = await loadMedia(current)
+          if (get().current?.id === current.id) set({ media })
+        }, 'Could not read slides and sounds.')
+      },
     }
   })
 }
