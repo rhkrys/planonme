@@ -54,3 +54,14 @@ test('a bad import file shows an error message', async () => {
   await user.click(screen.getByRole('button', { name: 'Dismiss' }))
   expect(screen.queryByRole('alert')).not.toBeInTheDocument()
 })
+
+test('delete confirmation focuses Cancel and Escape closes it', async () => {
+  const user = userEvent.setup()
+  render(<WorkshopBar />)
+  await screen.findByRole('combobox', { name: 'Current workshop' })
+  await user.click(screen.getByRole('button', { name: 'Delete' }))
+  expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus()
+  await user.keyboard('{Escape}')
+  expect(screen.queryByRole('group', { name: 'Confirm delete' })).toBeNull()
+  expect(screen.getByRole('combobox', { name: 'Current workshop' })).toBeInTheDocument()
+})

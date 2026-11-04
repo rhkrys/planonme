@@ -108,3 +108,33 @@ test('storage failure on start shows an error instead of crashing', async () => 
   expect(store.getState().status).toBe('error')
   expect(store.getState().error).toMatch(/Could not open saved workshops/)
 })
+
+test('rapid updates are all kept, in order', async () => {
+  const store = makeStore()
+  await store.getState().init()
+  const id = store.getState().currentId
+  await Promise.all([
+    store.getState().updateCurrent({ title: 'New title' }),
+    store.getState().updateCurrent({ durationMin: 99 }),
+    store.getState().updateCurrent({ date: '2025-05-01' }),
+  ])
+  const stored = await db.workshops.get(id ?? '')
+  expect(stored?.title).toBe('New title')
+  expect(stored?.durationMin).toBe(99)
+  expect(stored?.date).toBe('2025-05-01')
+  expect(store.getState().current?.title).toBe('New title')
+  expect(store.getState().workshops.map((w) => w.title)).toEqual(['New title'])
+})
+
+test('saving a workshop deleted in another tab does not bring it back', async () => {
+  const store = makeStore()
+  await store.getState().init()
+  await store.getState().createWorkshop('Other')
+  const id = store.getState().currentId ?? ''
+  // Another tab deletes it behind this store's back.
+  await db.workshops.delete(id)
+  await store.getState().updateCurrent({ durationMin: 30 })
+  expect(await db.workshops.get(id)).toBeUndefined()
+  expect(store.getState().error).toMatch(/no longer exists/)
+  expect(store.getState().current?.title).toBe(FIRST_WORKSHOP_TITLE)
+})

@@ -6,6 +6,14 @@ import type { SlideDeck, Sound, Workshop, WorkshopSummary } from './types'
 
 const CURRENT_KEY = 'currentWorkshopId'
 
+/** The workshop is gone, for example because another tab deleted it. */
+export class WorkshopNotFoundError extends Error {
+  constructor() {
+    super('This workshop no longer exists. It may have been deleted in another tab.')
+    this.name = 'WorkshopNotFoundError'
+  }
+}
+
 export function blankWorkshop(title: string): Workshop {
   const now = Date.now()
   return {
@@ -51,10 +59,20 @@ export async function saveWorkshop(db: PlanOnMeDB, workshop: Workshop): Promise<
   return clean
 }
 
+/** Saves changes to a workshop that must still exist, so a stale copy never brings it back. */
+export async function updateWorkshop(db: PlanOnMeDB, workshop: Workshop): Promise<Workshop> {
+  return db.transaction('rw', db.workshops, async () => {
+    if ((await db.workshops.get(workshop.id)) === undefined) throw new WorkshopNotFoundError()
+    return saveWorkshop(db, workshop)
+  })
+}
+
 export async function renameWorkshop(db: PlanOnMeDB, id: string, title: string): Promise<Workshop> {
-  const w = await getWorkshop(db, id)
-  if (!w) throw new Error('Workshop not found')
-  return saveWorkshop(db, { ...w, title: normalizeTitle(title) })
+  return db.transaction('rw', db.workshops, async () => {
+    const w = await getWorkshop(db, id)
+    if (!w) throw new WorkshopNotFoundError()
+    return saveWorkshop(db, { ...w, title: normalizeTitle(title) })
+  })
 }
 
 /** Deletes a workshop with all its slide decks and sounds. */

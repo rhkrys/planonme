@@ -62,10 +62,6 @@ export function backupFilename(title: string): string {
   return `${slug || 'workshop'}${BACKUP_EXTENSION}`
 }
 
-async function blobToBase64(blob: Blob): Promise<string> {
-  return bytesToBase64(new Uint8Array(await blob.arrayBuffer()))
-}
-
 /** JSON for an object followed by a base64 "data" field, built without one giant string. */
 function withData(meta: Record<string, unknown>, data: string): string[] {
   const json = JSON.stringify(meta)
@@ -80,9 +76,37 @@ export async function exportWorkshop(db: PlanOnMeDB, workshopId: string): Promis
   const decks = await listSlideDecks(db, workshop)
   const sounds = await listSounds(db, workshop)
 
+  // Apply the same caps as import, so every exported file can be imported again.
+  if (decks.length > LIMITS.maxDecks) {
+    fail(`This workshop has more than ${LIMITS.maxDecks} slide decks to export.`)
+  }
+  if (sounds.length > LIMITS.maxSounds) {
+    fail(`This workshop has more than ${LIMITS.maxSounds} sounds to export.`)
+  }
   let mediaBytes = 0
-  for (const d of decks) for (const s of d.slides) mediaBytes += s.size
-  for (const s of sounds) mediaBytes += s.blob.size
+  let slideCount = 0
+  for (const [i, d] of decks.entries()) {
+    if (d.slides.length > LIMITS.maxSlidesPerDeck) {
+      fail(`Slide deck ${i + 1} has more than ${LIMITS.maxSlidesPerDeck} slides to export.`)
+    }
+    slideCount += d.slides.length
+    for (const [j, s] of d.slides.entries()) {
+      if (s.size > LIMITS.maxSlideBytes) {
+        fail(`Slide ${j + 1} in deck ${i + 1} is larger than ${formatMb(LIMITS.maxSlideBytes)}.`)
+      }
+      mediaBytes += s.size
+    }
+  }
+  if (slideCount > LIMITS.maxSlidesTotal) {
+    fail(`This workshop has more than ${LIMITS.maxSlidesTotal} slides to export.`)
+  }
+  for (const [i, s] of sounds.entries()) {
+    if (s.blob.size > LIMITS.maxSoundBytes) {
+      fail(`Sound ${i + 1} is larger than ${formatMb(LIMITS.maxSoundBytes)}.`)
+    }
+    if (s.blob.size === 0) fail(`Sound ${i + 1} has no audio data.`)
+    mediaBytes += s.blob.size
+  }
   if (mediaBytes > LIMITS.maxMediaBytes) {
     fail(`This workshop has more than ${formatMb(LIMITS.maxMediaBytes)} of media to export.`)
   }
@@ -111,7 +135,11 @@ export async function exportWorkshop(db: PlanOnMeDB, workshopId: string): Promis
       const slide = deck.slides[j]
       if (!slide) continue
       if (j > 0) parts.push(',')
-      parts.push(...withData({ type: slide.type || 'image/png' }, await blobToBase64(slide)))
+      const bytes = new Uint8Array(await slide.arrayBuffer())
+      // Trust the bytes, not the stored type, so the file passes the import check.
+      const type = sniffImageType(bytes)
+      if (!type) fail(`Slide ${j + 1} in deck ${i + 1} is not a PNG, JPEG or WebP image.`)
+      parts.push(...withData({ type }, bytesToBase64(bytes)))
     }
     parts.push(']}')
   }
@@ -130,7 +158,7 @@ export async function exportWorkshop(db: PlanOnMeDB, workshopId: string): Promis
       hotkey: sound.hotkey,
       color: sound.color,
     }
-    parts.push(...withData(meta, await blobToBase64(sound.blob)))
+    parts.push(...withData(meta, bytesToBase64(new Uint8Array(await sound.blob.arrayBuffer()))))
   }
   parts.push(']}')
 
@@ -222,20 +250,21 @@ function startsWith(bytes: Uint8Array, signature: number[], offset = 0): boolean
   return signature.every((value, i) => bytes[offset + i] === value)
 }
 
-function looksLikeImage(bytes: Uint8Array, type: string): boolean {
-  switch (type) {
-    case 'image/png':
-      return startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])
-    case 'image/jpeg':
-      return startsWith(bytes, [0xff, 0xd8, 0xff])
-    case 'image/webp':
-      return (
-        startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) &&
-        startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)
-      )
-    default:
-      return false
+/** The slide image type the bytes start with, or null when they are not PNG, JPEG or WebP. */
+export function sniffImageType(bytes: Uint8Array): (typeof SLIDE_IMAGE_TYPES)[number] | null {
+  if (startsWith(bytes, [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return 'image/png'
+  if (startsWith(bytes, [0xff, 0xd8, 0xff])) return 'image/jpeg'
+  if (
+    startsWith(bytes, [0x52, 0x49, 0x46, 0x46]) &&
+    startsWith(bytes, [0x57, 0x45, 0x42, 0x50], 8)
+  ) {
+    return 'image/webp'
   }
+  return null
+}
+
+function looksLikeImage(bytes: Uint8Array, type: string): boolean {
+  return sniffImageType(bytes) === type
 }
 
 function decode(media: PendingMedia): Uint8Array<ArrayBuffer> {

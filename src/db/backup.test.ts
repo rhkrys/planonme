@@ -355,3 +355,42 @@ test('ignores unknown fields and prototype tricks', async () => {
   expect(({} as Record<string, unknown>).polluted).toBeUndefined()
   expect(Object.keys(w)).not.toContain('extra')
 })
+
+test('export labels slides by their bytes, so a stored slide with no type still round trips', async () => {
+  const w = await createWorkshop(db, 'Typeless')
+  const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3])
+  await addSlideDeck(db, w.id, { name: 'Deck', source: 'pdf', slides: [new Blob([jpeg])] })
+  const file = await exportWorkshop(db, w.id)
+  const imported = await importWorkshop(db, file.blob)
+  const [deck] = await listSlideDecks(db, imported)
+  expect(deck?.slides[0]?.type).toBe('image/jpeg')
+  expect(await bytesOf(deck?.slides[0] ?? new Blob())).toEqual(Array.from(jpeg))
+})
+
+test('export refuses media that import would reject, with a clear message', async () => {
+  const w = await createWorkshop(db, 'Odd media')
+  await addSlideDeck(db, w.id, {
+    name: 'Deck',
+    source: 'pdf',
+    slides: [new Blob([new Uint8Array([1, 2, 3])], { type: 'image/gif' })],
+  })
+  const err = await exportWorkshop(db, w.id).catch((e: unknown) => e)
+  expect(err).toBeInstanceOf(BackupError)
+  expect((err as Error).message).toMatch(/not a PNG, JPEG or WebP image/)
+})
+
+test('export refuses a sound larger than import allows', async () => {
+  const w = await createWorkshop(db, 'Big sound')
+  await addSound(db, w.id, {
+    name: 'Long',
+    kind: 'music',
+    blob: new Blob([new Uint8Array(LIMITS.maxSoundBytes + 1)], { type: 'audio/wav' }),
+    loop: false,
+    volume: 1,
+    hotkey: '',
+    color: '',
+  })
+  const err = await exportWorkshop(db, w.id).catch((e: unknown) => e)
+  expect(err).toBeInstanceOf(BackupError)
+  expect((err as Error).message).toMatch(/Sound 1 is larger than 100 MB/)
+})

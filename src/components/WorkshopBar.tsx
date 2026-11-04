@@ -109,14 +109,27 @@ export function WorkshopBar() {
             </button>
           </form>
         ) : mode.kind === 'delete' && current ? (
-          <div className="inline-form" role="group" aria-label="Confirm delete">
+          <div
+            className="inline-form"
+            role="group"
+            aria-label="Confirm delete"
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') setMode({ kind: 'idle' })
+            }}
+          >
             <span>
               Delete "{current.title}" with all its slides and sounds? This can not be undone.
             </span>
             <button type="button" className="btn danger" disabled={!ready} onClick={confirmDelete}>
               Yes, delete
             </button>
-            <button type="button" className="btn" onClick={() => setMode({ kind: 'idle' })}>
+            {/* Focus the safe choice, so keyboard users land here and Enter does not delete. */}
+            <button
+              type="button"
+              className="btn"
+              autoFocus
+              onClick={() => setMode({ kind: 'idle' })}
+            >
               Cancel
             </button>
           </div>
@@ -190,6 +203,14 @@ export function WorkshopBar() {
         )}
       </div>
       {status === 'loading' && <p className="muted">Loading workshops...</p>}
+      {status === 'error' && (
+        <div className="message error">
+          <span>Saved workshops could not be opened.</span>
+          <button type="button" className="btn" onClick={() => void actions.init()}>
+            Try again
+          </button>
+        </div>
+      )}
       {error && (
         <div className="message error" role="alert">
           <span>{error}</span>

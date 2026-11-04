@@ -9,8 +9,9 @@ import {
   getWorkshop,
   listWorkshops,
   renameWorkshop,
-  saveWorkshop,
   setCurrentWorkshopId,
+  updateWorkshop,
+  WorkshopNotFoundError,
 } from '../db/repo'
 import type { Workshop, WorkshopSummary } from '../db/types'
 
@@ -41,7 +42,10 @@ export interface WorkshopState {
 export const FIRST_WORKSHOP_TITLE = 'My workshop'
 
 function describe(err: unknown, fallback: string): string {
-  if (err instanceof BackupError) return err.message
+  if (err instanceof BackupError || err instanceof WorkshopNotFoundError) return err.message
+  if (err instanceof Error && err.name === 'QuotaExceededError') {
+    return 'Browser storage is full. Delete some workshops or media and try again.'
+  }
   return fallback
 }
 
@@ -58,7 +62,7 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
       await setCurrentWorkshopId(db, current?.id ?? null)
     }
 
-    async function run(action: () => Promise<void>, failure: string): Promise<boolean> {
+    async function attempt(action: () => Promise<void>, failure: string): Promise<boolean> {
       try {
         await action()
         return true
@@ -67,6 +71,15 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
         set({ error: describe(err, failure), notice: null })
         return false
       }
+    }
+
+    // Writes run one at a time, in the order they were asked for. Without this, a slow save
+    // could finish after a newer one and overwrite it.
+    let queue: Promise<unknown> = Promise.resolve()
+    function run(action: () => Promise<void>, failure: string): Promise<boolean> {
+      const next = queue.then(() => attempt(action, failure))
+      queue = next
+      return next
     }
 
     return {
@@ -125,15 +138,25 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
       updateCurrent: async (patch) => {
         const current = get().current
         if (!current) return
-        await run(async () => {
-          const saved = await saveWorkshop(getDb(), { ...current, ...patch })
+        // Apply the change right away, so the next patch builds on this one and is not lost.
+        const next: Workshop = { ...current, ...patch }
+        set({ current: next })
+        const ok = await run(async () => {
+          const saved = await updateWorkshop(getDb(), next)
           set((s) => ({
-            current: saved,
+            // Keep newer unsaved edits in place; they have their own save queued.
+            current: s.current === next ? saved : s.current,
             workshops: s.workshops.map((w) =>
               w.id === saved.id ? { id: saved.id, title: saved.title } : w,
             ),
           }))
         }, 'Could not save the workshop.')
+        if (!ok) {
+          // Show what is really stored, keeping the error message.
+          const error = get().error
+          await attempt(() => refresh(get().currentId), 'Could not open saved workshops.')
+          set({ error })
+        }
       },
 
       exportCurrent: async () => {
