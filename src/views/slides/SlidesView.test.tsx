@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { SlideDeck } from '../../db/types'
 import * as pipeline from '../../slides/importPdf'
@@ -266,4 +266,44 @@ test('focus goes back to the deck buttons after a move, a cancel and a delete', 
   await userEvent.click(screen.getByRole('button', { name: 'Delete deck' }))
   await waitFor(() => expect(screen.queryByRole('heading', { name: 'Main' })).toBeNull())
   expect(screen.getByRole('button', { name: 'Delete Intro' })).toHaveFocus()
+})
+
+test('clicking a slide shows it on the audience screen', async () => {
+  const { audienceStore } = await import('../../store/audienceStore')
+  const decks = [deck('d1', 'Intro', 2), deck('d2', 'Wrap', 1)]
+  workshopStore.setState({
+    loadSlideDecks: async () => decks,
+    media: {
+      decks: decks.map((d) => ({ id: d.id, name: d.name, slideCount: d.slides.length })),
+      sounds: [],
+    },
+  })
+  render(<SlidesView />)
+  await userEvent.click(await screen.findByRole('button', { name: 'Show slide 3' }))
+  expect(audienceStore.getState().slide).toEqual({ deckId: 'd2', index: 0 })
+  expect(screen.getByRole('button', { name: 'Show slide 3' })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  )
+  expect(screen.getByTestId('audience-now')).toHaveTextContent('Showing slide 3 of 3.')
+  expect(screen.getByRole('img', { name: 'Audience preview: slide 3' })).toBeInTheDocument()
+  expect(screen.getByRole('button', { name: 'Next slide' })).toBeDisabled()
+
+  await userEvent.click(screen.getByRole('button', { name: 'Previous slide' }))
+  expect(screen.getByTestId('audience-now')).toHaveTextContent('Showing slide 2 of 3.')
+  await userEvent.click(screen.getByRole('button', { name: 'Blank (B)' }))
+  expect(screen.getByRole('img', { name: 'Audience preview: blank screen' })).toBeInTheDocument()
+  await userEvent.keyboard('l')
+  expect(screen.getByRole('button', { name: 'Logo (L)' })).toHaveAttribute('aria-pressed', 'true')
+  expect(screen.getByTestId('audience-now')).toHaveTextContent('Logo screen is on.')
+  audienceStore.setState({ slide: null, overlay: 'none' })
+})
+
+test('a file picked while the slides are still loading gets a message', async () => {
+  workshopStore.setState({ loadSlideDecks: () => new Promise<SlideDeck[] | null>(() => {}) })
+  render(<SlidesView />)
+  const input = screen.getByLabelText('Choose PDF file')
+  fireEvent.change(input, { target: { files: [pdfFile()] } })
+  expect(await screen.findByRole('alert')).toHaveTextContent('Slides are still loading.')
+  expect(pipeline.importPdf).not.toHaveBeenCalled()
 })

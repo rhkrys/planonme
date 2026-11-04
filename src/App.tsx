@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { AudienceBar, PopupBlockedHelp } from './components/AudienceBar'
 import { WorkshopBar } from './components/WorkshopBar'
 import { workshopStore } from './store/workshopStore'
 import { VIEWS, type ViewId } from './views'
@@ -26,20 +27,24 @@ export default function App() {
 
   return (
     <div className="shell">
-      <nav className="sidebar" aria-label="Main">
+      <aside className="sidebar">
         <div className="brand">PlanOnMe</div>
-        {VIEWS.map((v) => (
-          <button
-            key={v.id}
-            className={v.id === view ? 'nav-item active' : 'nav-item'}
-            aria-current={v.id === view ? 'page' : undefined}
-            onClick={() => setView(v.id)}
-          >
-            {v.label}
-          </button>
-        ))}
-      </nav>
+        <nav className="sidebar-nav" aria-label="Main">
+          {VIEWS.map((v) => (
+            <button
+              key={v.id}
+              className={v.id === view ? 'nav-item active' : 'nav-item'}
+              aria-current={v.id === view ? 'page' : undefined}
+              onClick={() => setView(v.id)}
+            >
+              {v.label}
+            </button>
+          ))}
+        </nav>
+        <AudienceBar />
+      </aside>
       <main className="content">
+        <PopupBlockedHelp />
         <WorkshopBar />
         {current.id === 'plan' ? (
           <PlanView />

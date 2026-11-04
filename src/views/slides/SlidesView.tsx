@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type RefObject } from 'react'
+import { AudiencePanel } from '../../components/AudiencePanel'
 import { LIMITS } from '../../db/limits'
 import { DECK_SOURCES, type DeckSource, type SlideDeck } from '../../db/types'
 import { deckStarts, slideRangeLabel, SOURCE_LABELS } from '../../slides/decks'
@@ -11,6 +12,7 @@ import {
   SlideImportError,
   type ImportProgress,
 } from '../../slides/importPdf'
+import { audienceStore, useAudienceStore } from '../../store/audienceStore'
 import { useWorkshopStore, workshopStore } from '../../store/workshopStore'
 import { SlideHelp } from './SlideHelp'
 
@@ -64,6 +66,7 @@ export function SlidesView() {
   return (
     <section className="slides-view">
       <h1>Slides</h1>
+      <AudiencePanel decks={decks} />
       <ImportPanel
         key={currentId}
         deckCount={decks?.length ?? 0}
@@ -139,7 +142,12 @@ function ImportPanel({
   const canImport = ready && !busy && !full
 
   async function start(file: File) {
-    if (!canImport || runningRef.current) return
+    if (!canImport || runningRef.current) {
+      // A file picked while the decks are still loading would otherwise be dropped silently.
+      if (!ready && !runningRef.current)
+        setError('Slides are still loading. Try again in a moment.')
+      return
+    }
     const workshopId = workshopStore.getState().currentId
     if (!workshopId) return
     runningRef.current = true
@@ -620,6 +628,7 @@ function DeckCard({
 }
 
 function Thumbnails({ deck, start }: { deck: SlideDeck; start: number }) {
+  const current = useAudienceStore((s) => (s.slide?.deckId === deck.id ? s.slide.index : null))
   const [urls, setUrls] = useState<string[]>([])
   const [broken, setBroken] = useState<ReadonlySet<number>>(new Set())
 
@@ -637,7 +646,12 @@ function Thumbnails({ deck, start }: { deck: SlideDeck; start: number }) {
         const n = start + i
         const url = urls[i]
         return (
-          <li key={i} className="thumb" data-testid="thumb">
+          <li
+            key={i}
+            className={current === i ? 'thumb current' : 'thumb'}
+            data-testid="thumb"
+            aria-current={current === i ? 'true' : undefined}
+          >
             {url && !broken.has(i) ? (
               <img
                 src={url}
@@ -654,6 +668,13 @@ function Thumbnails({ deck, start }: { deck: SlideDeck; start: number }) {
             <span className="thumb-number" aria-hidden="true">
               {n}
             </span>
+            <button
+              type="button"
+              className="thumb-show"
+              aria-label={`Show slide ${n}`}
+              aria-pressed={current === i}
+              onClick={() => audienceStore.getState().showSlide({ deckId: deck.id, index: i })}
+            />
           </li>
         )
       })}

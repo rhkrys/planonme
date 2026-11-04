@@ -168,6 +168,10 @@ select {
   color: var(--accent-text);
 }
 
+.btn.primary:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--accent) 85%, var(--text));
+}
+
 .btn.danger {
   background: var(--danger);
   border-color: var(--danger);
@@ -964,4 +968,230 @@ input.minutes {
   font-variant-numeric: tabular-nums;
   background: rgb(0 0 0 / 0.7);
   color: #fff;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.audience-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.connection {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.connection-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--border);
+  border: 1px solid var(--muted);
+  flex: 0 0 auto;
+}
+
+.connection.on {
+  color: var(--text);
+}
+
+.connection.on .connection-dot {
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.popup-help {
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.popup-help p {
+  margin: 0 0 4px;
+}
+
+.audience-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.audience-panel h2 {
+  margin: 0;
+}
+
+.audience-panel-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.audience-panel-side {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1 1 18rem;
+  min-width: 0;
+}
+
+.audience-panel-side p {
+  margin: 0;
+}
+
+.audience-preview {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 256px;
+  max-width: 100%;
+  aspect-ratio: 16 / 9;
+  background: #000;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.audience-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+.preview-note {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.preview-logo {
+  padding: 0 12px;
+  color: #fff;
+  font-weight: 600;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.thumb.current {
+  border-color: var(--accent);
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.thumb-show {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.thumb-show:hover {
+  background: rgb(255 255 255 / 0.08);
+}
+
+.thumb-show:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: -3px;
+}
+
+/* The audience window. Black, no chrome, the slide letterboxed to fit any window size. */
+
+.audience-page {
+  background: #000;
+  overflow: hidden;
+}
+
+.audience {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  user-select: none;
+}
+
+.audience.idle,
+.audience.idle * {
+  cursor: none;
+}
+
+.audience-slide {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.audience-blank {
+  position: absolute;
+  inset: 0;
+  background: #000;
+}
+
+.audience-logo {
+  padding: 5vmin;
+  text-align: center;
+}
+
+.audience-logo p {
+  margin: 0;
+  font-size: clamp(1.5rem, 7vmin, 6rem);
+  font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.audience-note {
+  padding: 5vmin;
+  text-align: center;
+  color: #9a9ab0;
+  font-size: clamp(1rem, 3.5vmin, 2.5rem);
+}
+
+.audience-note p {
+  margin: 0 0 0.5em;
+}
+
+.audience-small {
+  font-size: 0.6em;
+  color: #6b6b80;
+}
+
+.audience-waiting {
+  animation: audience-breathe 3s ease-in-out infinite;
+}
+
+@keyframes audience-breathe {
+  0%,
+  100% {
+    opacity: 0.55;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .audience-waiting {
+    animation: none;
+  }
 }

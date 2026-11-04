@@ -17,6 +17,8 @@ async function makePdf(pages: number, label: string): Promise<Uint8Array> {
 }
 
 async function importPdf(page: Page, name: string, bytes: Uint8Array | string) {
+  // The file button is disabled until the decks have loaded.
+  await expect(page.getByLabel('Choose PDF file')).toBeEnabled()
   await page.getByLabel('Choose PDF file').setInputFiles({
     name,
     mimeType: 'application/pdf',
@@ -176,6 +178,7 @@ test('keyboard focus stays in place while importing and editing decks', async ({
   await expect(page.getByRole('combobox', { name: 'Current workshop' })).toBeEnabled()
   await page.getByRole('button', { name: 'Slides' }).click()
   const fileInput = page.getByLabel('Choose PDF file')
+  await expect(fileInput).toBeEnabled()
   await fileInput.focus()
   await importPdf(page, 'one.pdf', await makePdf(2, 'One'))
   await expect(page.getByRole('status')).toContainText('Added "one"')
