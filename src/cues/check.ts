@@ -68,6 +68,22 @@ function invalidProblem(seg: InvalidSegment): CueProblem {
   return { start: seg.start, end: seg.end, raw: seg.raw, message: seg.message }
 }
 
+/**
+ * The 1-based line numbers of many positions in one pass over the text. Positions must be in
+ * ascending order, as problems are.
+ */
+export function linesOf(text: string, positions: readonly number[]): number[] {
+  const out: number[] = []
+  let line = 1
+  let i = 0
+  for (const position of positions) {
+    const end = Math.min(Math.max(position, i), text.length)
+    for (; i < end; i++) if (text.charCodeAt(i) === 10) line++
+    out.push(line)
+  }
+  return out
+}
+
 /** The 1-based line number of a position in a text. */
 export function lineOf(text: string, position: number): number {
   let line = 1

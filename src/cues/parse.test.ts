@@ -1,3 +1,4 @@
+import { LIMITS } from '../db/limits'
 import {
   formatCue,
   formatTimer,
@@ -123,6 +124,12 @@ test('very long bracket text is not a cue', () => {
   expect(parseScript(`[SFX ${name}]`).cues).toEqual([])
   const ok = 'a'.repeat(MAX_TOKEN_LENGTH - 4)
   expect(parseScript(`[SFX ${ok}]`).cues).toHaveLength(1)
+})
+
+test('the longest allowed sound name still makes a cue', () => {
+  const name = 'b'.repeat(LIMITS.maxTitleLength)
+  expect(parseScript(`[MUSIC ${name}]`).cues[0]?.cue).toEqual({ type: 'music', name })
+  expect(parseScript(`[SFX  ${name} ]`).cues[0]?.cue).toEqual({ type: 'sfx', name })
 })
 
 test('never throws on odd input', () => {

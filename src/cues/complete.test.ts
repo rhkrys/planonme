@@ -1,3 +1,5 @@
+import { LIMITS } from '../db/limits'
+import { parseScript } from './parse'
 import {
   applyOption,
   buildOptions,
@@ -89,4 +91,12 @@ test('inserts an option and reports whether the cue is done', () => {
     caret: 12,
     done: true,
   })
+})
+
+test('every offered sound fits in a cue token', () => {
+  const name = 'n'.repeat(LIMITS.maxTitleLength)
+  const options = buildOptions({ decks: [], sounds: [{ name, kind: 'music' }] })
+  const option = options.find((o) => o.id === 'sound-0')
+  expect(option?.insert).toBe(`MUSIC ${name}]`)
+  expect(parseScript(`[${option?.insert ?? ''}`).cues).toHaveLength(1)
 })

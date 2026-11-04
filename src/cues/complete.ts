@@ -70,6 +70,8 @@ export function buildOptions(media: CompletionMedia): CueOption[] {
     const name = s.name.trim().replace(/\s+/g, ' ')
     if (!name || name.includes(']') || name.includes('[')) return
     const word = s.kind === 'music' ? 'MUSIC' : 'SFX'
+    // A name too long for a token could never be cued, so do not offer it.
+    if (word.length + 1 + name.length > MAX_TOKEN_LENGTH) return
     out.push({
       id: `sound-${i}`,
       label: `${word} ${name}`,

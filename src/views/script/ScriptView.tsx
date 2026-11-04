@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useDeferredValue,
   useEffect,
   useId,
   useLayoutEffect,
@@ -9,7 +10,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from 'react'
-import { checkScript, findSound, lineOf, type CueContext, type CueProblem } from '../../cues/check'
+import { checkScript, findSound, linesOf, type CueContext, type CueProblem } from '../../cues/check'
 import {
   applyOption,
   buildOptions,
@@ -28,6 +29,8 @@ import { caretPosition } from './caret'
 const UNTITLED = 'Untitled block'
 /** How long to wait after the last key press before saving. */
 const SAVE_DELAY_MS = 500
+/** Most problems listed at once. A script full of bad tokens would otherwise slow typing. */
+export const MAX_SHOWN_PROBLEMS = 100
 
 function displayTitle(b: Block): string {
   return b.title.trim() || UNTITLED
@@ -46,6 +49,11 @@ function saveScript(workshopId: string, blockId: string, script: string) {
   void workshopStore.getState().updateCurrent({
     blocks: current.blocks.map((b) => (b.id === blockId ? { ...b, script } : b)),
   })
+}
+
+function countCues(text: string, context: CueContext | null) {
+  const parsed = parseScript(text)
+  return { cues: parsed.cues.length, problems: checkScript(parsed, context).length }
 }
 
 function toContext(media: MediaSummary | null): CueContext | null {
@@ -116,19 +124,21 @@ function ScriptEditor({
   const [liveText, setLiveText] = useState<{ id: string; text: string } | null>(null)
   const selected = workshop.blocks.find((b) => b.id === chosenId) ?? workshop.blocks[0]
 
-  // Problem counts per block, from the text being typed for the open block.
-  const counts = useMemo(() => {
+  // Problem counts per block. The stored scripts are counted only when they change, and the
+  // text being typed for the open block is counted on its own, so typing stays fast even when
+  // a workshop has many long scripts.
+  const storedCounts = useMemo(() => {
     const out = new Map<string, { cues: number; problems: number }>()
-    for (const b of workshop.blocks) {
-      const text = liveText && liveText.id === b.id ? liveText.text : b.script
-      const parsed = parseScript(text)
-      out.set(b.id, {
-        cues: parsed.cues.length,
-        problems: checkScript(parsed, context).length,
-      })
-    }
+    for (const b of workshop.blocks) out.set(b.id, countCues(b.script, context))
     return out
-  }, [workshop.blocks, liveText, context])
+  }, [workshop.blocks, context])
+  const typed = useDeferredValue(liveText)
+  const counts = useMemo(() => {
+    if (!typed || !storedCounts.has(typed.id)) return storedCounts
+    const out = new Map(storedCounts)
+    out.set(typed.id, countCues(typed.text, context))
+    return out
+  }, [storedCounts, typed, context])
 
   const onTextChange = useCallback((id: string, text: string) => setLiveText({ id, text }), [])
 
@@ -224,7 +234,8 @@ function BlockScript({
     onDirtyChange(false)
   }, [workshopId, block.id, onDirtyChange])
 
-  // Save what is left when switching blocks or views, and before the page goes away.
+  // Save what is left when switching blocks or views, when the tab is hidden, and before the
+  // page goes away.
   useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent) {
       if (unsaved.current !== null) {
@@ -232,9 +243,14 @@ function BlockScript({
         e.preventDefault()
       }
     }
+    function onHide() {
+      if (document.visibilityState === 'hidden') flush()
+    }
     window.addEventListener('beforeunload', onBeforeUnload)
+    document.addEventListener('visibilitychange', onHide)
     return () => {
       window.removeEventListener('beforeunload', onBeforeUnload)
+      document.removeEventListener('visibilitychange', onHide)
       flush()
     }
   }, [flush])
@@ -266,7 +282,10 @@ function BlockScript({
     el?.scrollIntoView?.({ block: 'nearest' })
   })
 
-  const parsed = useMemo(() => parseScript(draft), [draft])
+  // The preview and the problems follow the text a moment behind, so a very long script does
+  // not slow down typing.
+  const shown = useDeferredValue(draft)
+  const parsed = useMemo(() => parseScript(shown), [shown])
   const problems = useMemo(() => checkScript(parsed, context), [parsed, context])
 
   function change(text: string, at: number) {
@@ -291,6 +310,8 @@ function BlockScript({
     const at = e.target.selectionStart ?? text.length
     const typedBracket = text.length > draft.length && text[at - 1] === '['
     change(text, at)
+    // What is typed changed, so start again at the top of the list.
+    setActive(0)
     if (typedBracket) openList(at)
     else if (open && findCompletionQuery(text, at) === null) setOpen(false)
   }
@@ -309,6 +330,8 @@ function BlockScript({
   }
 
   function onKeyDown(e: KeyboardEvent<HTMLTextAreaElement>) {
+    // Keys that finish an input method composition belong to it, not to the list.
+    if (e.nativeEvent.isComposing) return
     if (!showList) {
       if (e.key === ' ' && e.ctrlKey) {
         const at = e.currentTarget.selectionStart ?? 0
@@ -435,14 +458,14 @@ function BlockScript({
             aria-labelledby={`${baseId}-preview`}
             data-testid="script-preview"
           >
-            {draft.trim() === '' ? (
+            {shown.trim() === '' ? (
               <p className="muted">Nothing written yet.</p>
             ) : (
               <Preview segments={parsed.segments} problems={problems} media={media} />
             )}
           </div>
           <Problems
-            text={draft}
+            text={shown}
             problems={problems}
             checked={context !== null}
             onShow={showProblem}
@@ -531,6 +554,11 @@ function Problems({
   checked: boolean
   onShow: (p: CueProblem) => void
 }) {
+  const listed = problems.slice(0, MAX_SHOWN_PROBLEMS)
+  const lines = linesOf(
+    text,
+    listed.map((p) => p.start),
+  )
   return (
     <div className="script-problems">
       <h3>Problems</h3>
@@ -543,8 +571,8 @@ function Problems({
         <p className="muted">No problems found.</p>
       ) : (
         <ul aria-label="Cue problems">
-          {problems.map((p) => {
-            const line = lineOf(text, p.start)
+          {listed.map((p, i) => {
+            const line = lines[i] ?? 1
             return (
               <li key={p.start}>
                 <button
@@ -562,6 +590,11 @@ function Problems({
             )
           })}
         </ul>
+      )}
+      {problems.length > listed.length && (
+        <p className="muted" data-testid="more-problems">
+          {problems.length - listed.length} more not shown. Fix the ones above first.
+        </p>
       )}
     </div>
   )

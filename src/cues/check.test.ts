@@ -1,4 +1,4 @@
-import { checkScript, findSound, lineOf, type CueContext } from './check'
+import { checkScript, findSound, lineOf, linesOf, type CueContext } from './check'
 import { parseScript } from './parse'
 
 const context: CueContext = {
@@ -58,4 +58,13 @@ test('lineOf counts lines from 1', () => {
   expect(lineOf('', 0)).toBe(1)
   expect(lineOf('a\nb\nc', 4)).toBe(3)
   expect(lineOf('a\nb', 99)).toBe(2)
+})
+
+test('linesOf finds many line numbers in one pass', () => {
+  const text = 'a\nb\n\nc'
+  expect(linesOf(text, [0, 1, 2, 4, 5, 99])).toEqual([1, 1, 2, 3, 4, 4])
+  expect(linesOf(text, [0, 4, 5, 6]).toString()).toBe(
+    [0, 4, 5, 6].map((p) => lineOf(text, p)).toString(),
+  )
+  expect(linesOf('', [])).toEqual([])
 })

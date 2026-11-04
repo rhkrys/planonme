@@ -2,7 +2,7 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import type { Block } from '../../db/types'
 import { workshopStore } from '../../store/workshopStore'
-import { ScriptView } from './ScriptView'
+import { MAX_SHOWN_PROBLEMS, ScriptView } from './ScriptView'
 
 beforeAll(async () => {
   await workshopStore.getState().init()
@@ -200,4 +200,45 @@ test('without media only malformed cues are checked', async () => {
   render(<ScriptView />)
   expect(screen.getByText(/could not be read/)).toBeInTheDocument()
   expect(within(screen.getByTestId('script-preview')).getAllByTestId('cue-bad')).toHaveLength(1)
+})
+
+test('a script full of bad tokens lists only the first problems', async () => {
+  const many = MAX_SHOWN_PROBLEMS + 30
+  await setup([block('a', 'Welcome', '[SFX]\n'.repeat(many))])
+  render(<ScriptView />)
+  const problems = within(screen.getByRole('list', { name: 'Cue problems' })).getAllByRole('button')
+  expect(problems).toHaveLength(MAX_SHOWN_PROBLEMS)
+  expect(problems[MAX_SHOWN_PROBLEMS - 1]).toHaveAccessibleName(
+    `Line ${MAX_SHOWN_PROBLEMS}: [SFX]. Add a sound name. Show in script.`,
+  )
+  expect(screen.getByTestId('more-problems')).toHaveTextContent('30 more not shown.')
+  expect(screen.getByRole('button', { name: /^Welcome/ })).toHaveTextContent(`${many} problems`)
+})
+
+test('typing more moves the choice back to the first suggestion', async () => {
+  const user = userEvent.setup()
+  await setup([block('a', 'Welcome')])
+  render(<ScriptView />)
+  const text = editor('Welcome')
+  await user.type(text, '[[')
+  await user.keyboard('{ArrowDown}{ArrowDown}')
+  expect(within(screen.getByRole('listbox')).getAllByRole('option')[2]).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await user.type(text, 'S')
+  const options = within(screen.getByRole('listbox')).getAllByRole('option')
+  expect(options[0]).toHaveAttribute('aria-selected', 'true')
+  expect(options[0]).toHaveTextContent('SLIDE')
+})
+
+test('a hidden tab saves the text right away', async () => {
+  const user = userEvent.setup()
+  await setup([block('a', 'Welcome')])
+  render(<ScriptView />)
+  await user.type(editor('Welcome'), 'Before hide')
+  const spy = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+  document.dispatchEvent(new Event('visibilitychange'))
+  spy.mockRestore()
+  expect(stored().blocks[0]?.script).toBe('Before hide')
 })

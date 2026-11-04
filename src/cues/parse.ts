@@ -50,8 +50,11 @@ export interface ParsedScript {
   invalid: InvalidSegment[]
 }
 
-/** Longest text between the brackets that can still be a cue. */
-export const MAX_TOKEN_LENGTH = 120
+/**
+ * Longest text between the brackets that can still be a cue. It leaves room for the longest
+ * sound name (LIMITS.maxTitleLength, 200) after a keyword such as MUSIC.
+ */
+export const MAX_TOKEN_LENGTH = 240
 /** Longest timer we accept: one day. */
 export const MAX_TIMER_SECONDS = 24 * 60 * 60
 /** Highest slide number we accept in a token. */
