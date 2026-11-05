@@ -110,6 +110,18 @@ export function slidesCheck(media: MediaInfo | null): CheckResult {
   return { status: 'ok', message: `${plural(slides, 'slide', 'slides')} in ${decks}.` }
 }
 
+/** Longest block title shown in a cue problem. Longer ones are cut. */
+export const MAX_ISSUE_TITLE = 60
+
+function shortTitle(raw: unknown): string {
+  const title = typeof raw === 'string' ? raw.replace(/\s+/g, ' ').trim() : ''
+  if (!title) return 'Untitled block'
+  const chars = [...title]
+  return chars.length > MAX_ISSUE_TITLE
+    ? `${chars.slice(0, MAX_ISSUE_TITLE).join('').trimEnd()}...`
+    : title
+}
+
 function toContext(media: MediaInfo): CueContext {
   return {
     slideCount: media.decks.reduce((sum, d) => sum + d.slideCount, 0),
@@ -140,7 +152,7 @@ export function findCueIssues(
     problems.forEach((p, i) => {
       issues.push({
         blockId: block.id,
-        blockTitle: block.title.trim() || 'Untitled block',
+        blockTitle: shortTitle(block.title),
         line: lines[i] ?? 1,
         raw: p.raw,
         message: p.message,
@@ -168,7 +180,8 @@ export function cuesCheck(
     }
   }
   if (cues === 0) return { status: 'ok', message: 'The script has no cues.' }
-  return { status: 'ok', message: `All ${plural(cues, 'cue', 'cues')} are valid.` }
+  if (cues === 1) return { status: 'ok', message: 'The one cue is valid.' }
+  return { status: 'ok', message: `All ${cues} cues are valid.` }
 }
 
 /**
@@ -200,7 +213,8 @@ export function soundsCheck(
     const done = sounds.length - pending
     return { status: 'checking', message: `Checking sounds... ${done} of ${sounds.length}.` }
   }
-  return { status: 'ok', message: `All ${plural(sounds.length, 'sound plays', 'sounds play')}.` }
+  if (sounds.length === 1) return { status: 'ok', message: 'The one sound plays.' }
+  return { status: 'ok', message: `All ${sounds.length} sounds play.` }
 }
 
 /** A warning about the master volume, or null when it is fine. */

@@ -661,15 +661,38 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * Ends the test tone early with a very short fade, so a second click or Stop all does not
+   * make a loud click. The nodes are let go once the fade is over.
+   */
   private stopTone() {
     const tone = this.tone
     if (!tone) return
-    try {
-      tone.osc.stop()
-    } catch {
-      // It already ended.
+    this.tone = null
+    const release = () => {
+      tone.osc.onended = null
+      try {
+        tone.osc.disconnect()
+        tone.gain.disconnect()
+      } catch {
+        // Nothing to do: the nodes are dropped anyway.
+      }
     }
-    this.endTone(tone)
+    try {
+      const now = this.ctx?.currentTime ?? 0
+      const param = tone.gain.gain
+      param.cancelScheduledValues(now)
+      param.setValueAtTime(param.value, now)
+      param.linearRampToValueAtTime(0, now + QUICK_FADE_SECONDS)
+      tone.osc.onended = release
+      tone.osc.stop(now + QUICK_FADE_SECONDS)
+      // A safety net in case onended never fires.
+      setTimeout(release, (QUICK_FADE_SECONDS + 1) * 1000)
+    } catch {
+      // It already ended, or the fade could not be set: cut it now.
+      release()
+    }
+    this.emit()
   }
 
   private endTone(tone: ToneVoice) {

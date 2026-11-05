@@ -83,9 +83,13 @@ test('shows live checks for the audience window, slides, cues and sounds', async
   expect(check('sounds')).toHaveAttribute('data-status', 'fail')
   expect(checkSound).toHaveBeenCalledTimes(2)
 
+  // The button stays when the window connects, so keyboard focus is not lost.
+  const open = screen.getByRole('button', { name: 'Open the audience window' })
+  open.focus()
   act(() => audienceStore.setState({ connected: true }))
   expect(check('audience')).toHaveAttribute('data-status', 'ok')
-  expect(screen.queryByRole('button', { name: 'Open the audience window' })).toBeNull()
+  expect(open).toHaveAccessibleName('Show the audience window')
+  expect(open).toHaveFocus()
 })
 
 test('checking sounds again decodes them again', async () => {
@@ -93,10 +97,13 @@ test('checking sounds again decodes them again', async () => {
   const checkSound = vi.spyOn(audioEngine, 'checkSound').mockResolvedValue(null)
   await setup([], [sound('a', 'Applause')])
   render(<PreflightView />)
-  expect(await screen.findByText('All 1 sound plays.')).toBeInTheDocument()
-  await user.click(screen.getByRole('button', { name: 'Check sounds again' }))
-  expect(await screen.findByText('All 1 sound plays.')).toBeInTheDocument()
+  expect(await screen.findByText('The one sound plays.')).toBeInTheDocument()
+  const again = screen.getByRole('button', { name: 'Check sounds again' })
+  again.focus()
+  await user.keyboard('{Enter}')
+  expect(await screen.findByText('The one sound plays.')).toBeInTheDocument()
   expect(checkSound).toHaveBeenCalledTimes(2)
+  expect(again).toHaveFocus()
 })
 
 test('the test tone button plays the beep through the engine', async () => {
@@ -153,14 +160,24 @@ test('ticks count toward ready and are remembered per workshop', async () => {
   await setup([])
   render(<PreflightView />)
   expect(screen.getByRole('checkbox', { name: 'Click Share screen in Zoom' })).not.toBeChecked()
-  expect(screen.getByRole('button', { name: 'Clear ticks' })).toBeDisabled()
+  expect(screen.getByRole('button', { name: 'Clear ticks' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  )
   expect(tickStore.getState().ticks[first]).toHaveLength(5)
 
   // Going back shows its ticks again, and Clear ticks empties them.
   await act(() => workshopStore.getState().selectWorkshop(first))
   expect(screen.getByRole('checkbox', { name: 'Click Share screen in Zoom' })).toBeChecked()
-  await user.click(screen.getByRole('button', { name: 'Clear ticks' }))
+  // Keyboard only: focus stays on Clear ticks after it empties the list.
+  const clear = screen.getByRole('button', { name: 'Clear ticks' })
+  clear.focus()
+  await user.keyboard('{Enter}')
   expect(screen.getByRole('checkbox', { name: 'Click Share screen in Zoom' })).not.toBeChecked()
+  expect(clear).toHaveFocus()
+  expect(clear).toHaveAttribute('aria-disabled', 'true')
+  await user.keyboard('{Enter}')
+  expect(tickStore.getState().ticks[first]).toBeUndefined()
 })
 
 test('explains how to resize the audience window', async () => {

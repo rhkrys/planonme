@@ -21,6 +21,7 @@ import { tickStore, useTicks } from '../../preflight/ticks'
 import { audienceStore, useAudienceStore } from '../../store/audienceStore'
 import { useWorkshopStore } from '../../store/workshopStore'
 import { openAudienceWindow } from '../../sync/popup'
+import { PREFLIGHT_TITLE_ID } from '../../views'
 
 /** Most cue problems listed at once. The rest are counted. */
 const MAX_LISTED_ISSUES = 20
@@ -84,7 +85,9 @@ export function PreflightView() {
   if (status !== 'ready' || !currentId) {
     return (
       <section className="preflight">
-        <h1>Pre-flight</h1>
+        <h1 id={PREFLIGHT_TITLE_ID} tabIndex={-1}>
+          Pre-flight
+        </h1>
         <p className="muted">{status === 'error' ? 'No workshop is open.' : 'Loading...'}</p>
       </section>
     )
@@ -127,7 +130,9 @@ function Checklist({ workshopId }: { workshopId: string }) {
 
   return (
     <section className="preflight">
-      <h1>Pre-flight</h1>
+      <h1 id={PREFLIGHT_TITLE_ID} tabIndex={-1}>
+        Pre-flight
+      </h1>
       <p className="muted">Check these before you share your screen in Zoom.</p>
 
       <div className="preflight-summary">
@@ -138,10 +143,11 @@ function Checklist({ workshopId }: { workshopId: string }) {
         >
           {ready ? 'All set. You are ready to go live.' : `${done} of ${total} done.`}
         </p>
+        {/* aria-disabled rather than disabled, so keyboard focus stays on the button. */}
         <button
           type="button"
           className="btn"
-          disabled={ticks.length === 0}
+          aria-disabled={ticks.length === 0}
           onClick={() => tickStore.getState().clear(workshopId)}
         >
           Clear ticks
@@ -165,11 +171,10 @@ function Checklist({ workshopId }: { workshopId: string }) {
       <h2>In PlanOnMe</h2>
       <ul className="checks">
         <CheckRow id="audience" title="Audience window" result={live.audience}>
-          {!connected && (
-            <button type="button" className="btn" onClick={openAudience}>
-              Open the audience window
-            </button>
-          )}
+          {/* Always shown, so focus is not lost when the window connects. */}
+          <button type="button" className="btn" onClick={openAudience}>
+            {connected ? 'Show the audience window' : 'Open the audience window'}
+          </button>
         </CheckRow>
 
         <CheckRow id="slides" title="Slides" result={live.slides} />
@@ -201,8 +206,10 @@ function Checklist({ workshopId }: { workshopId: string }) {
             <button
               type="button"
               className="btn"
-              disabled={live.sounds.status === 'checking'}
-              onClick={soundChecks.recheck}
+              aria-disabled={live.sounds.status === 'checking'}
+              onClick={() => {
+                if (live.sounds.status !== 'checking') soundChecks.recheck()
+              }}
             >
               Check sounds again
             </button>

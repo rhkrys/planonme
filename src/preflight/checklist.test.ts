@@ -5,6 +5,7 @@ import {
   LIVE_CHECKS,
   MANUAL_ITEMS,
   masterWarning,
+  MAX_ISSUE_TITLE,
   progress,
   slidesCheck,
   soundsCheck,
@@ -151,4 +152,21 @@ test('progress counts ok live checks and required ticks, not optional ones', () 
     total,
     ready: false,
   })
+})
+
+test('one cue or one sound reads as plain English', () => {
+  const { cues, issues } = findCueIssues([{ id: 'a', title: 'A', script: '[SLIDE 1]' }], media)
+  expect(cuesCheck(cues, issues, media).message).toBe('The one cue is valid.')
+  expect(soundsCheck([{ id: 's1', name: 'Gong' }], { s1: { ok: true } }, false).message).toBe(
+    'The one sound plays.',
+  )
+})
+
+test('a very long block title is cut short in cue problems', () => {
+  const title = `${'Long title\n words '.repeat(40)}end`
+  const { issues } = findCueIssues([{ id: 'a', title, script: '[SLIDE 99]' }], media)
+  const shown = issues[0]?.blockTitle ?? ''
+  expect(shown.endsWith('...')).toBe(true)
+  expect(shown.length).toBeLessThanOrEqual(MAX_ISSUE_TITLE + 3)
+  expect(shown).not.toContain('\n')
 })

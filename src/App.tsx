@@ -4,7 +4,7 @@ import { useSoundKeys } from './audio/useSoundKeys'
 import { AudienceBar, PopupBlockedHelp } from './components/AudienceBar'
 import { WorkshopBar } from './components/WorkshopBar'
 import { workshopStore } from './store/workshopStore'
-import { VIEWS, type ViewId } from './views'
+import { PREFLIGHT_TITLE_ID, VIEWS, type ViewId } from './views'
 import { PlanView } from './views/plan/PlanView'
 import { PreflightView } from './views/preflight/PreflightView'
 import { RunView } from './views/run/RunView'
@@ -32,6 +32,12 @@ export default function App() {
     window.addEventListener('beforeunload', onBeforeUnload)
     return () => window.removeEventListener('beforeunload', onBeforeUnload)
   }, [])
+
+  // The link in Run mode goes away with Run mode, so move focus to the checklist heading.
+  function openPreflight() {
+    setView('preflight')
+    requestAnimationFrame(() => document.getElementById(PREFLIGHT_TITLE_ID)?.focus())
+  }
 
   return (
     <div className="shell">
@@ -65,7 +71,7 @@ export default function App() {
         ) : current.id === 'preflight' ? (
           <PreflightView />
         ) : (
-          <RunView onOpenPreflight={() => setView('preflight')} />
+          <RunView onOpenPreflight={openPreflight} />
         )}
       </main>
     </div>

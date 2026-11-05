@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 
@@ -18,4 +18,8 @@ test('Run mode links to the pre-flight checklist', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'Open pre-flight checklist' }))
   expect(screen.getByRole('heading', { name: 'Pre-flight', level: 1 })).toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Pre-flight' })).toHaveAttribute('aria-current', 'page')
+  // Focus moves to the checklist heading, not back to the top of the page.
+  await waitFor(() =>
+    expect(screen.getByRole('heading', { name: 'Pre-flight', level: 1 })).toHaveFocus(),
+  )
 })

@@ -8,3 +8,6 @@ export const VIEWS = [
 ] as const
 
 export type ViewId = (typeof VIEWS)[number]['id']
+
+/** The pre-flight heading, focused when Run mode links there so keyboard focus is not lost. */
+export const PREFLIGHT_TITLE_ID = 'preflight-title'

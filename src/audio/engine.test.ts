@@ -5,6 +5,7 @@ import {
   FADE_SECONDS,
   MAX_VOICES,
   PANIC_FADE_SECONDS,
+  QUICK_FADE_SECONDS,
   type AudioBufferLike,
   type AudioContextLike,
   type AudioNodeLike,
@@ -451,7 +452,12 @@ test('a second test tone replaces the first, and stop all ends it', async () => 
   await engine.playTestTone()
   await engine.playTestTone()
   expect(ctx.oscillators).toHaveLength(2)
-  expect(ctx.oscillators[0]?.connected).toEqual([])
+  // The first one fades out very quickly instead of stopping with a click.
+  const first = ctx.oscillators[0]
+  expect(first?.stoppedAt).toBe(10 + QUICK_FADE_SECONDS)
+  expect(first?.output?.gain.lastRamp()).toEqual([0, 10 + QUICK_FADE_SECONDS])
+  first?.onended?.()
+  expect(first?.connected).toEqual([])
   expect(engine.getSnapshot().testTone).toBe(true)
   engine.stopAll()
   expect(engine.getSnapshot().testTone).toBe(false)

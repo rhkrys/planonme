@@ -73,7 +73,7 @@ test('pre-flight checks the app live and remembers Zoom ticks for the session', 
   await nav(page, 'Pre-flight').click()
   await expect(check(page, 'slides')).toContainText('2 slides in 1 deck.')
   await expect(check(page, 'sounds')).toHaveAttribute('data-status', 'ok')
-  await expect(check(page, 'sounds')).toContainText('All 1 sound plays.')
+  await expect(check(page, 'sounds')).toContainText('The one sound plays.')
   await expect(check(page, 'cues')).toHaveAttribute('data-status', 'fail')
   await expect(page.getByRole('list', { name: 'Cue problems' })).toContainText(
     'Welcome, line 2: [SLIDE 5]. There is no slide 5.',
@@ -93,7 +93,7 @@ test('pre-flight checks the app live and remembers Zoom ticks for the session', 
   const popup = await popupPromise
   await popup.waitForURL(/\/audience\.html$/)
   await expect(check(page, 'audience')).toHaveAttribute('data-status', 'ok')
-  await expect(page.getByRole('button', { name: 'Open the audience window' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: 'Show the audience window' })).toBeVisible()
   await expect(page.getByTestId('preflight-progress')).toHaveText('4 of 8 done.')
 
   // The test tone plays through the engine.

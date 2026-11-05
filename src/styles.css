@@ -1844,3 +1844,20 @@ input.minutes {
   gap: 8px;
   margin: 0;
 }
+
+/* On a narrow screen the badge goes above the text, so the text keeps the full width. */
+@media (max-width: 760px) {
+  .preflight-check {
+    flex-direction: column;
+    gap: 6px;
+  }
+}
+
+.preflight h1:focus {
+  outline: none;
+}
+
+.preflight h1:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
