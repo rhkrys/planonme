@@ -3,6 +3,7 @@ import { makeWav } from '../test/media'
 import { PlanOnMeDB } from './db'
 import { LIMITS } from './limits'
 import {
+  addSlideDeck,
   addSound,
   createWorkshop,
   deleteSound,
@@ -142,4 +143,22 @@ test('a workshop has a cap on sound count and total size', async () => {
     soundIds: Array.from({ length: LIMITS.maxSounds }, (_, i) => `s${i}`),
   })
   await expect(addSound(db, w2.id, newSound())).rejects.toThrow(/up to 200 sounds/)
+})
+
+test('slides and sounds together stay small enough to export', async () => {
+  const w = await createWorkshop(db, 'Full')
+  const big = new Blob([new Uint8Array(LIMITS.maxSoundBytes)], { type: 'audio/wav' })
+  for (let i = 0; i < 3; i++) await addSound(db, w.id, newSound({ blob: big }))
+  const slide = new Blob([new Uint8Array(LIMITS.maxSlideBytes)], { type: 'image/png' })
+  const room = Math.floor((LIMITS.maxMediaBytes - 3 * LIMITS.maxSoundBytes) / LIMITS.maxSlideBytes)
+  const deck = (count: number) => ({
+    name: 'Deck',
+    source: 'pdf' as const,
+    slides: new Array<Blob>(count).fill(slide),
+  })
+  await expect(addSlideDeck(db, w.id, deck(room + 1))).rejects.toThrow(/fits in a backup file/)
+  await addSlideDeck(db, w.id, deck(room))
+  const w2 = await createWorkshop(db, 'Slides first')
+  await addSlideDeck(db, w2.id, deck(Math.floor(LIMITS.maxMediaBytes / LIMITS.maxSlideBytes)))
+  await expect(addSound(db, w2.id, newSound({ blob: big }))).rejects.toBeInstanceOf(MediaLimitError)
 })

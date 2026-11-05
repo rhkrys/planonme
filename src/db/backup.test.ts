@@ -333,7 +333,23 @@ test('rejects oversized media and files', async () => {
       slides: new Array(count).fill({ type: 'image/png', data: each }),
     },
   ]
-  expect(() => parseBackup(many)).toThrow(/more than 500 MB of media/)
+  expect(() => parseBackup(many)).toThrow(/more than 360 MB of media/)
+
+  // Sounds over the total sound cap, while all media together are under the media cap.
+  const perSound = 80 * 1024 * 1024
+  const soundData = 'A'.repeat(Math.floor(perSound / 3) * 4)
+  const loud = validBackup()
+  loud.slideDecks = []
+  const firstSound = loud.sounds[0]
+  if (!firstSound) throw new Error('no sound')
+  loud.sounds = Array.from(
+    { length: Math.floor(LIMITS.maxSoundBytesTotal / perSound) + 1 },
+    () => ({
+      ...firstSound,
+      data: soundData,
+    }),
+  )
+  expect(() => parseBackup(loud)).toThrow(/more than 300 MB of sounds/)
 
   // The file size is checked before reading it.
   const huge = { size: LIMITS.maxFileBytes + 1, text: () => Promise.reject(new Error('no')) }

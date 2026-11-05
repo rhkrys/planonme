@@ -20,6 +20,7 @@ import {
 } from './types'
 
 const CURRENT_KEY = 'currentWorkshopId'
+const MB = 1024 * 1024
 
 /** The workshop is gone, for example because another tab deleted it. */
 export class WorkshopNotFoundError extends Error {
@@ -173,6 +174,22 @@ function orderById<T extends { id: string }>(items: T[], order: string[]): T[] {
   return [...items].sort((a, b) => rank(a.id) - rank(b.id))
 }
 
+/** Bytes of all slides and sounds of a workshop. */
+async function mediaBytes(db: PlanOnMeDB, w: Workshop): Promise<number> {
+  const decks = await listSlideDecks(db, w)
+  const sounds = await listSounds(db, w)
+  let total = 0
+  for (const d of decks) for (const s of d.slides) total += s.size
+  for (const s of sounds) total += s.blob.size
+  return total
+}
+
+function mediaLimitError(): MediaLimitError {
+  return new MediaLimitError(
+    `A workshop can hold up to ${Math.round(LIMITS.maxMediaBytes / MB)} MB of slides and sounds, so it still fits in a backup file. Delete some first.`,
+  )
+}
+
 /** Adds a slide deck to a workshop. */
 export async function addSlideDeck(
   db: PlanOnMeDB,
@@ -185,7 +202,7 @@ export async function addSlideDeck(
     id: newId(),
     workshopId,
   }
-  await db.transaction('rw', db.workshops, db.slideDecks, async () => {
+  await db.transaction('rw', db.workshops, db.slideDecks, db.sounds, async () => {
     const w = await getWorkshop(db, workshopId)
     if (!w) throw new WorkshopNotFoundError()
     if (w.slideDeckIds.length >= LIMITS.maxDecks) {
@@ -202,6 +219,8 @@ export async function addSlideDeck(
         `A workshop can have up to ${LIMITS.maxSlidesTotal} slides. Delete a deck first.`,
       )
     }
+    const added = full.slides.reduce((sum, s) => sum + s.size, 0)
+    if ((await mediaBytes(db, w)) + added > LIMITS.maxMediaBytes) throw mediaLimitError()
     await db.slideDecks.add(full)
     await saveWorkshop(db, { ...w, slideDeckIds: [...w.slideDeckIds, full.id] })
   })
@@ -257,8 +276,6 @@ export async function moveSlideDeck(
     return saved.slideDeckIds
   })
 }
-
-const MB = 1024 * 1024
 
 /**
  * A sound name that works inside a cue such as [SFX name]: square brackets become round ones,
@@ -339,7 +356,7 @@ export async function addSound(
       `A sound can be up to ${Math.round(LIMITS.maxSoundBytes / MB)} MB. This file is larger.`,
     )
   }
-  return db.transaction('rw', db.workshops, db.sounds, async () => {
+  return db.transaction('rw', db.workshops, db.sounds, db.slideDecks, async () => {
     const w = await getWorkshop(db, workshopId)
     if (!w) throw new WorkshopNotFoundError()
     if (w.soundIds.length >= LIMITS.maxSounds) {
@@ -359,6 +376,7 @@ export async function addSound(
         `A workshop can hold up to ${Math.round(LIMITS.maxSoundBytesTotal / MB)} MB of sounds. Delete one first.`,
       )
     }
+    if ((await mediaBytes(db, w)) + sound.blob.size > LIMITS.maxMediaBytes) throw mediaLimitError()
     const clean = cleanPatch(sound, others, null)
     const full: Sound = {
       id: newId(),

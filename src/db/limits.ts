@@ -4,8 +4,11 @@ const MB = 1024 * 1024
 export const LIMITS = {
   /** Largest backup file we try to read. Also keeps the text under the browser string limit. */
   maxFileBytes: 500 * MB,
-  /** Total decoded media (slides plus sounds) in one workshop backup. */
-  maxMediaBytes: 500 * MB,
+  /**
+   * Total media (slides plus sounds) of one workshop. Base64 in a backup file adds a third, so
+   * this much media still fits in maxFileBytes with room for the text.
+   */
+  maxMediaBytes: 360 * MB,
   maxSlideBytes: 20 * MB,
   maxSoundBytes: 100 * MB,
   /** All sounds of one workshop together, so the workshop still fits in a backup file. */

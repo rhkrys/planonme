@@ -108,7 +108,9 @@ export async function exportWorkshop(db: PlanOnMeDB, workshopId: string): Promis
     mediaBytes += s.blob.size
   }
   if (mediaBytes > LIMITS.maxMediaBytes) {
-    fail(`This workshop has more than ${formatMb(LIMITS.maxMediaBytes)} of media to export.`)
+    fail(
+      `This workshop has more than ${formatMb(LIMITS.maxMediaBytes)} of slides and sounds to export. Delete some first.`,
+    )
   }
 
   const head = {
@@ -123,6 +125,15 @@ export async function exportWorkshop(db: PlanOnMeDB, workshopId: string): Promis
     },
   }
   const headJson = JSON.stringify(head)
+  // Check the size before reading any media, so a file that is too large never fills memory.
+  // Base64 turns 3 bytes into 4 characters; each item also gets a little JSON around it.
+  const estimate =
+    Math.ceil(mediaBytes / 3) * 4 + headJson.length + (slideCount + sounds.length + 1) * 400
+  if (estimate > LIMITS.maxFileBytes) {
+    fail(
+      `This workshop is too large to export (over ${formatMb(LIMITS.maxFileBytes)}). Delete some slides or sounds first.`,
+    )
+  }
   const parts: string[] = [headJson.slice(0, -1), ',"slideDecks":[']
 
   for (let i = 0; i < decks.length; i++) {
@@ -358,6 +369,10 @@ export function parseBackup(json: unknown): ParsedBackup {
 
   if (mediaBytes > LIMITS.maxMediaBytes) {
     fail(`The file has more than ${formatMb(LIMITS.maxMediaBytes)} of media.`)
+  }
+  const soundBytes = sounds.reduce((sum, s) => sum + base64DecodedLength(s.media.data), 0)
+  if (soundBytes > LIMITS.maxSoundBytesTotal) {
+    fail(`The file has more than ${formatMb(LIMITS.maxSoundBytesTotal)} of sounds.`)
   }
 
   // Second pass: decode media now that every size is known to be in range.
