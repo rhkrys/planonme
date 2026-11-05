@@ -49,6 +49,50 @@ export function audioTypeOf(file: { name: string; type: string }): string | null
   return TYPES_BY_EXTENSION[extensionOf(file.name)] ?? null
 }
 
+function ascii(bytes: Uint8Array, start: number, text: string): boolean {
+  for (let i = 0; i < text.length; i++) {
+    if (bytes[start + i] !== text.charCodeAt(i)) return false
+  }
+  return true
+}
+
+/** How many bytes from the start of a file sniffAudioType needs. */
+export const SNIFF_BYTES = 12
+
+/**
+ * The audio type that the first bytes of a file point to, or null. Used for files that come
+ * without a type and without a known extension.
+ */
+export function sniffAudioType(head: Uint8Array): string | null {
+  if (ascii(head, 0, 'RIFF') && ascii(head, 8, 'WAVE')) return 'audio/wav'
+  if (ascii(head, 0, 'OggS')) return 'audio/ogg'
+  if (ascii(head, 0, 'fLaC')) return 'audio/flac'
+  if (ascii(head, 0, 'ID3')) return 'audio/mpeg'
+  if (ascii(head, 4, 'ftyp')) return 'audio/mp4'
+  const [a = 0, b = 0, c = 0, d = 0] = head
+  if (a === 0x1a && b === 0x45 && c === 0xdf && d === 0xa3) return 'audio/webm'
+  // MPEG audio frame sync (MP3) or ADTS (AAC).
+  if (a === 0xff && (b & 0xf6) === 0xf0) return 'audio/aac'
+  if (a === 0xff && (b & 0xe0) === 0xe0) return 'audio/mpeg'
+  return null
+}
+
+/**
+ * Like audioTypeOf, but when the file has no type and no known extension, looks at its first
+ * bytes. Never throws: a file that cannot be read gives null.
+ */
+export async function detectAudioType(file: Blob & { name: string }): Promise<string | null> {
+  const known = audioTypeOf(file)
+  if (known) return known
+  if (file.type && file.type.toLowerCase() !== 'application/octet-stream') return null
+  try {
+    const head = new Uint8Array(await file.slice(0, SNIFF_BYTES).arrayBuffer())
+    return sniffAudioType(head)
+  } catch {
+    return null
+  }
+}
+
 /** A sound name made from a file name, without the extension. */
 export function soundNameFromFile(fileName: string): string {
   const base = fileName.replace(/\.[a-z0-9]{1,5}$/i, '').replace(/[_]+/g, ' ')

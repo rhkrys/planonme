@@ -4,6 +4,7 @@ import { audioEngine, DecodeError } from '../../audio/engine'
 import { soundLibrary } from '../../audio/library'
 import { useSoundKeys } from '../../audio/useSoundKeys'
 import type { Sound } from '../../db/types'
+import { makeWav } from '../../test/media'
 import { workshopStore, type WorkshopState } from '../../store/workshopStore'
 import { SoundsView } from './SoundsView'
 
@@ -118,6 +119,10 @@ test('a playing sound shows its state', async () => {
   const pad = screen.getByTestId('pad')
   expect(pad).toHaveAttribute('data-playing', 'true')
   expect(within(pad).getByTestId('pad-state')).toHaveTextContent('Playing')
+  // Screen readers hear the state too, not only the pad name.
+  expect(screen.getByRole('button', { name: 'Play Applause' })).toHaveAccessibleDescription(
+    'Playing',
+  )
   expect(screen.getByTestId('playing-count')).toHaveTextContent('1 sound playing')
   expect(screen.getByRole('slider', { name: 'Master volume' })).toHaveValue('70')
   expect(screen.getByRole('alert')).toHaveTextContent('Could not play "Gong".')
@@ -216,6 +221,9 @@ test('deleting a sound asks first', async () => {
   await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
   expect(del).not.toHaveBeenCalled()
   await userEvent.click(screen.getByRole('button', { name: 'Delete Gong' }))
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('group', { name: 'Confirm delete sound Gong' })).toBeNull()
+  await userEvent.click(screen.getByRole('button', { name: 'Delete Gong' }))
   await userEvent.click(screen.getByRole('button', { name: 'Delete sound' }))
   expect(del).toHaveBeenCalledWith('1')
 })
@@ -240,16 +248,20 @@ test('uploads check type, size and decoding, and add the good files', async () =
     new File(['bad'], 'broken.wav', { type: 'audio/wav' }),
     new File(['hello'], 'notes.txt', { type: 'text/plain' }),
     new File([], 'empty.wav', { type: 'audio/wav' }),
+    // No type and no extension, but the bytes are a WAV file.
+    new File([makeWav(0.01)], 'voice memo', { type: '' }),
   ]
   await act(async () => {
     fireEvent.change(screen.getByLabelText('Choose audio files'), { target: { files } })
   })
-  await waitFor(() => expect(workshopStore.getState().notice).toBe('Added 2 sounds.'))
-  expect(add).toHaveBeenCalledTimes(2)
+  await waitFor(() => expect(workshopStore.getState().notice).toBe('Added 3 sounds.'))
+  expect(add).toHaveBeenCalledTimes(3)
   expect(add.mock.calls[0]?.[1]).toMatchObject({ name: 'ding', kind: 'sfx', loop: false })
   expect(add.mock.calls[1]?.[1]).toMatchObject({ name: 'theme song', kind: 'music', loop: true })
   expect(add.mock.calls[1]?.[1].blob.type).toBe('audio/mpeg')
-  expect(audioEngine.prime).toHaveBeenCalledTimes(2)
+  expect(add.mock.calls[2]?.[1]).toMatchObject({ name: 'voice memo' })
+  expect(add.mock.calls[2]?.[1].blob.type).toBe('audio/wav')
+  expect(audioEngine.prime).toHaveBeenCalledTimes(3)
   const alert = screen.getByRole('alert')
   expect(alert).toHaveTextContent('"broken.wav": This file could not be read as audio.')
   expect(alert).toHaveTextContent('"notes.txt" is not an audio file.')

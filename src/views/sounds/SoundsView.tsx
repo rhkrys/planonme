@@ -12,7 +12,7 @@ import {
 import { audioEngine, DecodeError, type PlayingInfo } from '../../audio/engine'
 import {
   AUDIO_ACCEPT,
-  audioTypeOf,
+  detectAudioType,
   MAX_FILES_AT_ONCE,
   MAX_SOUND_BYTES,
   MUSIC_MIN_SECONDS,
@@ -199,7 +199,7 @@ function UploadPanel({ sounds }: { sounds: Sound[] | null }) {
         if (!file) continue
         const label = file.name || 'File'
         setState({ kind: 'working', index: i + 1, total: files.length, name: label })
-        const type = audioTypeOf(file)
+        const type = await detectAudioType(file)
         if (!type) {
           problems.push(`"${label}" is not an audio file.`)
           continue
@@ -463,6 +463,7 @@ interface PadProps {
 }
 
 function Pad({ sound, sounds, playing, loading, mode, busy, onMode, onSave, onDelete }: PadProps) {
+  const stateId = useId()
   const hotkey = normalizeHotkey(sound.hotkey)
   const state = playing ? (playing.stopping ? 'Stopping' : 'Playing') : loading ? 'Loading...' : ''
   const style = sound.color ? ({ '--pad-color': sound.color } as CSSProperties) : undefined
@@ -478,6 +479,7 @@ function Pad({ sound, sounds, playing, loading, mode, busy, onMode, onSave, onDe
         className="pad"
         aria-label={`Play ${sound.name}`}
         aria-keyshortcuts={hotkey ? hotkeyLabel(hotkey) : undefined}
+        aria-describedby={state ? stateId : undefined}
         data-sound={sound.id}
         data-action="play"
         onClick={() => void audioEngine.play(sound.id, { toggle: true })}
@@ -493,7 +495,7 @@ function Pad({ sound, sounds, playing, loading, mode, busy, onMode, onSave, onDe
             {hotkeyLabel(hotkey)}
           </kbd>
         )}
-        <span className="pad-state" data-testid="pad-state">
+        <span className="pad-state" id={stateId} data-testid="pad-state">
           {state}
         </span>
         {playing && <PadProgress info={playing} />}
@@ -534,6 +536,9 @@ function Pad({ sound, sounds, playing, loading, mode, busy, onMode, onSave, onDe
           className="message error inline-form"
           role="group"
           aria-label={`Confirm delete sound ${sound.name}`}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') onMode('idle')
+          }}
         >
           <span>Delete "{sound.name}"? This cannot be undone.</span>
           <button

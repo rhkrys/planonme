@@ -4,14 +4,19 @@ import { makeWav } from '../src/test/media'
 // Node's Buffer, typed here because this project does not include @types/node.
 declare const Buffer: { from(data: Uint8Array | string): never }
 
-async function addSounds(page: Page, files: { name: string; bytes: Uint8Array | string }[]) {
+async function addSounds(
+  page: Page,
+  files: { name: string; bytes: Uint8Array | string; type?: string }[],
+) {
   // The file button is disabled until the sounds have loaded.
   await expect(page.getByLabel('Choose audio files')).toBeEnabled()
-  await page
-    .getByLabel('Choose audio files')
-    .setInputFiles(
-      files.map((f) => ({ name: f.name, mimeType: 'audio/wav', buffer: Buffer.from(f.bytes) })),
-    )
+  await page.getByLabel('Choose audio files').setInputFiles(
+    files.map((f) => ({
+      name: f.name,
+      mimeType: f.type ?? 'audio/wav',
+      buffer: Buffer.from(f.bytes),
+    })),
+  )
 }
 
 function pad(page: Page, name: string) {
@@ -117,4 +122,10 @@ test('upload sounds, play them with clicks and hotkeys, crossfade music and stop
   await page.getByRole('button', { name: 'Delete Bell' }).click()
   await page.getByRole('button', { name: 'Delete sound' }).click()
   await expect(page.getByTestId('pad')).toHaveCount(3)
+
+  // A recording with no type and no file extension is recognized by its bytes.
+  await addSounds(page, [{ name: 'Voice memo', bytes: makeWav(0.5, 8000, 500), type: '' }])
+  await expect(page.getByTestId('pad')).toHaveCount(4)
+  await page.getByRole('button', { name: 'Play Voice memo' }).click()
+  await expect(pad(page, 'Voice memo')).toHaveAttribute('data-playing', 'true')
 })
