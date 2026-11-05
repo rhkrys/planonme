@@ -11,12 +11,37 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
   const dialogRef = useRef<HTMLDivElement>(null)
   const closeRef = useRef<HTMLButtonElement>(null)
 
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
+
   // Focus the close button, and give focus back to where it was when the dialog closes.
   useEffect(() => {
     const before = document.activeElement
     closeRef.current?.focus()
     return () => {
       if (before instanceof HTMLElement && before.isConnected) before.focus()
+    }
+  }, [])
+
+  // Focus can still end up outside the dialog, for example on the page body. Keys pressed there
+  // must not reach the app either, or Space would fire GO behind the dialog.
+  useEffect(() => {
+    function onWindowKey(e: globalThis.KeyboardEvent) {
+      const dialog = dialogRef.current
+      if (!dialog || (e.target instanceof Node && dialog.contains(e.target))) return
+      e.stopPropagation()
+      e.preventDefault()
+      if (e.type !== 'keydown') return
+      if (e.key === 'Escape' || e.key === '?') onCloseRef.current()
+      else closeRef.current?.focus()
+    }
+    window.addEventListener('keydown', onWindowKey, true)
+    window.addEventListener('keyup', onWindowKey, true)
+    return () => {
+      window.removeEventListener('keydown', onWindowKey, true)
+      window.removeEventListener('keyup', onWindowKey, true)
     }
   }, [])
 
@@ -58,6 +83,8 @@ export function ShortcutHelp({ onClose }: { onClose: () => void }) {
         role="dialog"
         aria-modal="true"
         aria-labelledby={TITLE_ID}
+        // A click on the text inside keeps focus in the dialog.
+        tabIndex={-1}
         onKeyDown={onKeyDown}
       >
         <div className="dialog-head">

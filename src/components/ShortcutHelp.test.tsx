@@ -55,3 +55,22 @@ test('number keys open the views, but not while typing', async () => {
   await waitFor(() => expect((title as HTMLInputElement).value.endsWith('3')).toBe(true))
   expect(screen.getByRole('heading', { name: 'Plan', level: 1 })).toBeInTheDocument()
 })
+
+test('keys pressed outside the open dialog do not reach the app', async () => {
+  const stopAll = vi.spyOn(audioEngine, 'stopAll')
+  render(<App />)
+  await userEvent.click(screen.getByRole('button', { name: /^Keyboard shortcuts/ }))
+  screen.getByRole('dialog', { name: 'Keyboard shortcuts' })
+
+  // Focus lands on the page body, for example after a click on plain text.
+  ;(document.activeElement as HTMLElement | null)?.blur()
+  expect(document.body).toHaveFocus()
+  await userEvent.keyboard('2')
+  expect(screen.getByRole('button', { name: 'Plan' })).toHaveAttribute('aria-current', 'page')
+  expect(screen.getByRole('button', { name: 'Close' })).toHaveFocus()
+
+  ;(document.activeElement as HTMLElement | null)?.blur()
+  await userEvent.keyboard('{Escape}')
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+  expect(stopAll).not.toHaveBeenCalled()
+})

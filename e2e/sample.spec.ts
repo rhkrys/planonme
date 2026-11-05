@@ -30,6 +30,26 @@ test('load the sample workshop and run all its cues with the space bar', async (
   await expect(picker.locator('option:checked')).toHaveText('Sample workshop')
   await expect(page.getByTestId('block-row')).toHaveCount(4)
 
+  // The sample slides are compact images, like imported PDF pages, not large PNG files.
+  // The e2e code has no DOM types, so the page code is a string.
+  const stored = (await page.evaluate(`new Promise((resolve, reject) => {
+    const open = indexedDB.open('planonme')
+    open.onerror = () => reject(open.error)
+    open.onsuccess = () => {
+      const get = open.result.transaction('slideDecks').objectStore('slideDecks').getAll()
+      get.onerror = () => reject(get.error)
+      get.onsuccess = () => {
+        resolve(get.result.flatMap((d) => d.slides.map((s) => ({ type: s.type, size: s.size }))))
+        open.result.close()
+      }
+    }
+  })`)) as { type: string; size: number }[]
+  expect(stored).toHaveLength(5)
+  for (const slide of stored) {
+    expect(['image/webp', 'image/jpeg']).toContain(slide.type)
+    expect(slide.size).toBeLessThan(100_000)
+  }
+
   // Its slides and sounds are there too.
   await nav(page, 'Slides').click()
   await expect(page.getByRole('list', { name: 'Slides in Sample slides' })).toBeVisible()
@@ -89,6 +109,25 @@ test('the shortcut list opens with ? and lists the Run mode keys', async ({ page
   // Number keys switch views.
   await page.keyboard.press('3')
   await expect(page.getByRole('heading', { name: 'Slides', level: 1 })).toBeVisible()
+})
+
+test('Space does not fire GO behind the open shortcut list', async ({ page }) => {
+  await page.goto('/')
+  await expect(page.getByRole('combobox', { name: 'Current workshop' })).toBeEnabled()
+  await page.getByRole('button', { name: 'Load sample workshop' }).click()
+  await expect(page.getByRole('status')).toContainText('Added "Sample workshop".')
+  await nav(page, 'Run').click()
+  await page.getByRole('button', { name: /^Keyboard shortcuts/ }).click()
+  const dialog = page.getByRole('dialog', { name: 'Keyboard shortcuts' })
+  // A click on plain text in the dialog must not let keys through to Run mode.
+  await dialog.getByText('Show or hide this list').click()
+  await page.keyboard.press('Space')
+  await page.keyboard.press('ArrowRight')
+  await expect(page.getByTestId('run-cue').and(page.locator('[aria-current="step"]'))).toHaveCount(
+    0,
+  )
+  await page.keyboard.press('Escape')
+  await expect(dialog).toBeHidden()
 })
 
 test('the app can be installed and works offline', async ({ page, context }) => {

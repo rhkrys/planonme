@@ -4,6 +4,7 @@
 import { AnnotationMode, getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 import type { PdfDocumentHandle, PdfOpener, PdfPageHandle } from './importPdf'
+import { encodeSlideImage } from './encode'
 
 GlobalWorkerOptions.workerSrc = workerUrl
 
@@ -50,19 +51,6 @@ class BundledBinaryDataFactory {
     if (!res.ok) throw new Error(`Could not load ${url}`)
     return new Uint8Array(await res.arrayBuffer())
   }
-}
-
-function toBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob | null> {
-  return new Promise((resolve) => canvas.toBlob(resolve, type, quality))
-}
-
-/** WebP where the browser can make it, JPEG otherwise. */
-async function encode(canvas: HTMLCanvasElement): Promise<Blob> {
-  const webp = await toBlob(canvas, 'image/webp', 0.85)
-  if (webp && webp.type === 'image/webp' && webp.size > 0) return webp
-  const jpeg = await toBlob(canvas, 'image/jpeg', 0.88)
-  if (!jpeg) throw new Error('The browser could not encode the page image')
-  return jpeg
 }
 
 export const openPdf: PdfOpener = async (data, signal) => {
@@ -121,7 +109,7 @@ export const openPdf: PdfOpener = async (data, signal) => {
             } finally {
               renderSignal.removeEventListener('abort', cancel)
             }
-            return await encode(canvas)
+            return await encodeSlideImage(canvas)
           } finally {
             // Free the pixel memory right away instead of waiting for garbage collection.
             canvas.width = 0

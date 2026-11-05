@@ -3,6 +3,7 @@
 
 import { encodeWav, renderTones, type Tone } from '../audio/wav'
 import { newId } from '../db/ids'
+import { encodeSlideImage } from '../slides/encode'
 import type { Block, SlideDeck, Sound } from '../db/types'
 
 export const SAMPLE_TITLE = 'Sample workshop'
@@ -145,7 +146,7 @@ export type SlideRenderer = (slide: SampleSlide, index: number, count: number) =
 export const SLIDE_WIDTH = 1280
 export const SLIDE_HEIGHT = 720
 
-/** Draws a slide on a canvas as a PNG image. Throws if the browser cannot draw. */
+/** Draws a slide on a canvas as a WebP or JPEG image. Throws if the browser cannot draw. */
 export const drawSlide: SlideRenderer = async (slide, index, count) => {
   const canvas = document.createElement('canvas')
   canvas.width = SLIDE_WIDTH
@@ -170,9 +171,8 @@ export const drawSlide: SlideRenderer = async (slide, index, count) => {
   ctx.fillStyle = 'rgba(255, 255, 255, 0.6)'
   ctx.textAlign = 'right'
   ctx.fillText(`${index + 1} / ${count}`, SLIDE_WIDTH - 48, SLIDE_HEIGHT - 40)
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
-  if (!blob || blob.type !== 'image/png') throw new Error('The canvas did not make a PNG image')
-  return blob
+  // WebP or JPEG, like imported PDF pages. A PNG of this gradient is about 100 times larger.
+  return encodeSlideImage(canvas)
 }
 
 /** Builds the whole sample workshop. Slides are drawn with render. */
