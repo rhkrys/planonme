@@ -49,7 +49,9 @@ export function AudiencePanel({
       <div className="audience-panel-body">
         <AudiencePreview screen={screen} decks={decks} />
         <div className="audience-panel-side">
-          <p data-testid="audience-now">{label}</p>
+          <p data-testid="audience-now" aria-live="polite" aria-atomic="true">
+            {label}
+          </p>
           <div className="inline-form">
             <button
               type="button"

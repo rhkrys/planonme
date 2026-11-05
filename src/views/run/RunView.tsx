@@ -196,6 +196,14 @@ function Runner({ plan, media }: { plan: RunPlan; media: MediaSummary | null }) 
         </div>
       </div>
 
+      <p
+        className="visually-hidden"
+        aria-live="polite"
+        aria-atomic="true"
+        data-testid="run-announce"
+      >
+        {announcement(plan, pos, current, media)}
+      </p>
       <div aria-live="polite" className="run-messages">
         {note && (
           <div className="message warn" data-testid="run-note">
@@ -242,6 +250,7 @@ function Runner({ plan, media }: { plan: RunPlan; media: MediaSummary | null }) 
         <aside className="run-side">
           {timer && <TimerPanel left={timerLeft(timer, now)} total={timer.seconds} />}
           <NextUp plan={plan} pos={pos} next={next} media={media} decks={decks} />
+          <SoundPanel media={media} />
           <AudiencePanel decks={decks} thumbnails={false} />
         </aside>
       </div>
@@ -328,6 +337,20 @@ function AudienceStatus() {
       {connected ? 'Audience window connected' : 'Audience window not open'}
     </span>
   )
+}
+
+/** What a screen reader says after GO, Back or a jump: the current cue, or the block. */
+function announcement(
+  plan: RunPlan,
+  pos: Position,
+  current: RunCue | null,
+  media: MediaSummary | null,
+): string {
+  if (current?.cue) {
+    return `Cue ${current.index + 1}, ${current.raw}: ${describeCue(current.cue, media)}`
+  }
+  const block = plan.blocks[pos.block]
+  return block ? `Now: ${blockName(block)}.` : ''
 }
 
 function blockName(block: RunBlock): string {
@@ -502,6 +525,49 @@ function ScriptText({
         )
       })}
     </p>
+  )
+}
+
+/** What plays now, a stop button and the master volume, so sound can be stopped from here. */
+function SoundPanel({ media }: { media: MediaSummary | null }) {
+  const engine = useSyncExternalStore(audioEngine.subscribe, audioEngine.getSnapshot)
+  const percent = Math.round(engine.master * 100)
+  const playing = Object.values(engine.playing).filter((p) => !p.stopping)
+  const names = playing.map((p) => {
+    const name = media?.sounds.find((x) => x.id === p.soundId)?.name ?? 'A sound'
+    return `${name} (${p.kind === 'music' ? 'music' : 'effect'})`
+  })
+  return (
+    <section className="run-panel" aria-labelledby="run-sound-title">
+      <h2 id="run-sound-title">Sound</h2>
+      <p data-testid="run-playing" className={names.length > 0 ? undefined : 'muted'}>
+        {names.length > 0 ? `Playing: ${names.join(', ')}` : 'Nothing playing.'}
+      </p>
+      <button
+        type="button"
+        className="btn danger"
+        aria-keyshortcuts="Escape"
+        onClick={() => audioEngine.stopAll()}
+      >
+        Stop all sound (Esc)
+      </button>
+      <div className="master">
+        <label htmlFor="run-master-volume">Master volume</label>
+        <input
+          id="run-master-volume"
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={percent}
+          aria-valuetext={`${percent}%`}
+          onChange={(e) => audioEngine.setMasterVolume(Number(e.target.value) / 100)}
+        />
+        <span className="master-value" aria-hidden="true">
+          {percent}%
+        </span>
+      </div>
+    </section>
   )
 }
 

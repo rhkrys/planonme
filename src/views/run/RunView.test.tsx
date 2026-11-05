@@ -182,3 +182,45 @@ test('shows the session clocks and changes the text size', async () => {
     screen.getByTestId('run-font-size').textContent?.replace(' ', ''),
   )
 })
+
+test('Run mode shows what plays and can stop all sound', async () => {
+  await setup([block('a', 'Intro', '[SFX applause]')])
+  const stopAll = vi.spyOn(audioEngine, 'stopAll').mockImplementation(() => {})
+  vi.spyOn(audioEngine, 'getSnapshot').mockReturnValue({
+    playing: {
+      s1: {
+        soundId: 's1',
+        kind: 'music',
+        count: 1,
+        startedAt: 0,
+        duration: 60,
+        loop: true,
+        stopping: false,
+      },
+    },
+    loading: [],
+    master: 0.5,
+    error: null,
+    testTone: false,
+  })
+  render(<RunView />)
+  expect(screen.getByTestId('run-playing')).toHaveTextContent('Playing: Applause (music)')
+  expect(screen.getByRole('slider', { name: 'Master volume' })).toHaveValue('50')
+  await userEvent.click(screen.getByRole('button', { name: 'Stop all sound (Esc)' }))
+  expect(stopAll).toHaveBeenCalled()
+})
+
+test('GO and Back are spoken to screen readers', async () => {
+  await setup([block('a', 'Intro', '[SLIDE 1] [SLIDE 3]'), block('b', 'Break')])
+  render(<RunView />)
+  const live = screen.getByTestId('run-announce')
+  expect(live).toHaveAttribute('aria-live', 'polite')
+  expect(live).toHaveTextContent('Now: Intro.')
+  await userEvent.click(screen.getByRole('button', { name: 'GO' }))
+  expect(live).toHaveTextContent(/^Cue 1, \[SLIDE 1\]/)
+  await userEvent.click(screen.getByRole('button', { name: 'GO' }))
+  expect(live).toHaveTextContent(/^Cue 2, \[SLIDE 3\]/)
+  await userEvent.click(screen.getByRole('button', { name: 'Back' }))
+  expect(live).toHaveTextContent(/^Cue 1/)
+  expect(screen.getByTestId('audience-now')).toHaveAttribute('aria-live', 'polite')
+})
