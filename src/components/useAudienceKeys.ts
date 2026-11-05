@@ -3,7 +3,7 @@ import type { StoreApi } from 'zustand/vanilla'
 import { audienceStore as appAudienceStore, type AudienceState } from '../store/audienceStore'
 
 /** True when a key press belongs to a text field, a list box or similar, not to the slides. */
-function isTyping(target: EventTarget | null): boolean {
+export function isTyping(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
   return !!target.closest('input, textarea, select, [role="listbox"], [role="combobox"]')

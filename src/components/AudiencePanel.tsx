@@ -10,7 +10,14 @@ import { useAudienceKeys } from './useAudienceKeys'
  * The audience screen controls: a small live preview of what the audience sees, previous and
  * next, and the blank and logo screens. The keyboard works while this panel is shown.
  */
-export function AudiencePanel({ decks }: { decks: SlideDeck[] | null }) {
+export function AudiencePanel({
+  decks,
+  thumbnails = true,
+}: {
+  decks: SlideDeck[] | null
+  /** False where no slide thumbnails are shown below the panel. */
+  thumbnails?: boolean
+}) {
   useAudienceKeys()
   const slide = useAudienceStore((s) => s.slide)
   const overlay = useAudienceStore((s) => s.overlay)
@@ -89,7 +96,7 @@ export function AudiencePanel({ decks }: { decks: SlideDeck[] | null }) {
           </div>
           <p className="hint muted">
             Keys: left and right arrows change the slide, B blanks the screen, L shows the logo
-            screen. Click a slide below to show it.
+            screen.{thumbnails ? ' Click a slide below to show it.' : ''}
           </p>
           {!connected && (
             <p className="hint muted">
@@ -114,9 +121,14 @@ export function AudiencePanel({ decks }: { decks: SlideDeck[] | null }) {
 export function AudiencePreview({
   screen,
   decks,
+  label,
+  testId = 'audience-preview',
 }: {
   screen: AudienceScreen
   decks: SlideDeck[] | null
+  /** The accessible name, when this is not the live audience preview. */
+  label?: string
+  testId?: string
 }) {
   const blob =
     screen.mode === 'slide'
@@ -148,14 +160,15 @@ export function AudiencePreview({
   }
 
   const name =
-    screen.mode === 'slide'
+    label ??
+    (screen.mode === 'slide'
       ? `Audience preview: slide ${screen.number}`
       : screen.mode === 'blank'
         ? 'Audience preview: blank screen'
-        : 'Audience preview: logo screen'
+        : 'Audience preview: logo screen')
 
   return (
-    <div className="audience-preview" role="img" aria-label={name} data-testid="audience-preview">
+    <div className="audience-preview" role="img" aria-label={name} data-testid={testId}>
       {inner}
     </div>
   )

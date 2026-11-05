@@ -5,8 +5,8 @@ import { AudienceBar, PopupBlockedHelp } from './components/AudienceBar'
 import { WorkshopBar } from './components/WorkshopBar'
 import { workshopStore } from './store/workshopStore'
 import { VIEWS, type ViewId } from './views'
-import { Placeholder } from './views/Placeholder'
 import { PlanView } from './views/plan/PlanView'
+import { RunView } from './views/run/RunView'
 import { ScriptView } from './views/script/ScriptView'
 import { SlidesView } from './views/slides/SlidesView'
 import { SoundsView } from './views/sounds/SoundsView'
@@ -62,7 +62,7 @@ export default function App() {
         ) : current.id === 'sounds' ? (
           <SoundsView />
         ) : (
-          <Placeholder title={current.label} />
+          <RunView />
         )}
       </main>
     </div>

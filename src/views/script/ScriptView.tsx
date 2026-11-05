@@ -10,7 +10,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from 'react'
-import { checkScript, findSound, linesOf, type CueContext, type CueProblem } from '../../cues/check'
+import { checkScript, linesOf, type CueContext, type CueProblem } from '../../cues/check'
 import {
   applyOption,
   buildOptions,
@@ -18,7 +18,8 @@ import {
   findCompletionQuery,
   type CueOption,
 } from '../../cues/complete'
-import { formatTimer, parseScript, type Cue, type Segment } from '../../cues/parse'
+import { describeCue } from '../../cues/describe'
+import { parseScript, type Cue, type Segment } from '../../cues/parse'
 import { LIMITS } from '../../db/limits'
 import type { MediaSummary } from '../../db/repo'
 import type { Block, Workshop } from '../../db/types'
@@ -474,33 +475,6 @@ function BlockScript({
       </div>
     </div>
   )
-}
-
-function slideLabel(slide: number, media: MediaSummary | null): string {
-  if (!media) return `Slide ${slide}`
-  let left = slide
-  for (const d of media.decks) {
-    if (left <= d.slideCount) return `Slide ${slide}: ${d.name}, slide ${left}`
-    left -= d.slideCount
-  }
-  return `Slide ${slide}`
-}
-
-function describeCue(cue: Cue, media: MediaSummary | null): string {
-  switch (cue.type) {
-    case 'slide':
-      return slideLabel(cue.slide, media)
-    case 'sfx':
-    case 'music': {
-      const sound = media ? findSound(media.sounds, cue.name) : null
-      const what = cue.type === 'sfx' ? 'Sound effect' : 'Music'
-      return `${what}: ${sound?.name ?? cue.name}`
-    }
-    case 'stopMusic':
-      return 'Stop the music'
-    case 'timer':
-      return `Timer: ${formatTimer(cue.seconds)}`
-  }
 }
 
 const CUE_CLASS: Record<Cue['type'], string> = {
