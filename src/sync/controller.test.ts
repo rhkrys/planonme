@@ -352,3 +352,58 @@ test('two control windows do not fight over the audience window', async () => {
   stopA()
   stopB()
 })
+
+test('keys from the audience window go to the control window it shows', async () => {
+  const ws = () =>
+    createStore(() => ({
+      status: 'ready',
+      current: workshop('w1'),
+      media: media(['a', 3]),
+    })) as unknown as StoreApi<WorkshopState>
+  const bus = createFakeBus()
+  const keysA: string[] = []
+  const keysB: string[] = []
+  const wsA = ws()
+  const wsB = ws()
+  const audA = createAudienceStore(() => wsA.getState().media?.decks ?? [])
+  const audB = createAudienceStore(() => wsB.getState().media?.decks ?? [])
+  const start = (aud: StoreApi<AudienceState>, w: StoreApi<WorkshopState>, keys: string[]) =>
+    startAudienceSync({
+      channel: bus.endpoint(),
+      audience: aud,
+      workshop: w,
+      storage: memoryStorage(),
+      onKey: (key) => keys.push(key),
+    })
+  const stopA = start(audA, wsA, keysA)
+  const stopB = start(audB, wsB, keysB)
+  const win = bus.endpoint()
+  let by: string | null = null
+  let screen: AudienceScreen | null = null
+  win.listen((m) => {
+    if (m.from !== 'control') return
+    if (m.type === 'show') {
+      screen = m.screen
+      by = m.sender ?? null
+    }
+    win.post({ v: 1, from: 'audience', type: 'status', screen, problem: null, by })
+  })
+  await vi.advanceTimersByTimeAsync(ADOPT_WAIT_MS)
+  audA.getState().step(1)
+  await settle()
+  win.post({ v: 1, from: 'audience', type: 'key', key: ' ', shift: false })
+  await settle()
+  expect(keysA).toEqual([' '])
+  expect(keysB).toEqual([])
+  // B moves to a slide of its own, so the audience window now shows B.
+  audB.getState().step(1)
+  audB.getState().step(1)
+  await settle()
+  expect(screen).toEqual(slide('a', 2, 3))
+  win.post({ v: 1, from: 'audience', type: 'key', key: 'PageDown', shift: false })
+  await settle()
+  expect(keysA).toEqual([' '])
+  expect(keysB).toEqual(['PageDown'])
+  stopA()
+  stopB()
+})

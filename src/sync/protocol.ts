@@ -21,28 +21,62 @@ export type AudienceScreen =
 export type SlideProblem = 'missing' | 'error'
 
 export type ControlMessage =
-  /** Show this screen. */
-  | { v: 1; from: 'control'; type: 'show'; screen: AudienceScreen }
+  /**
+   * Show this screen. sender is a random id of the control window, so a second PlanOnMe tab can
+   * tell whose screen the audience window shows. Older versions leave it out.
+   */
+  | { v: 1; from: 'control'; type: 'show'; screen: AudienceScreen; sender?: string }
   /** Asks any audience window to answer with a status message. Also sent as a heartbeat. */
   | { v: 1; from: 'control'; type: 'hello' }
 
 export type AudienceMessage =
   /** The audience window just opened or reloaded and asks for the screen to show. */
   | { v: 1; from: 'audience'; type: 'hello' }
-  /** What the audience window shows now. screen is null while it waits for the first one. */
+  /**
+   * What the audience window shows now. screen is null while it waits for the first one. by is
+   * the sender of the screen it shows, or null when it is not known.
+   */
   | {
       v: 1
       from: 'audience'
       type: 'status'
       screen: AudienceScreen | null
       problem: SlideProblem | null
+      by?: string | null
     }
+  /**
+   * A key pressed while the audience window has focus, such as Space for GO or Page Down from a
+   * presentation clicker. The control window acts on it as if it was pressed there.
+   */
+  | { v: 1; from: 'audience'; type: 'key'; key: string; shift: boolean }
   /** The audience window is closing. */
   | { v: 1; from: 'audience'; type: 'bye' }
 
 export type SyncMessage = ControlMessage | AudienceMessage
 
 const PROBLEMS: readonly SlideProblem[] = ['missing', 'error']
+
+const FORWARD_KEYS = new Set([
+  ' ',
+  'ArrowLeft',
+  'ArrowRight',
+  'ArrowUp',
+  'ArrowDown',
+  'PageUp',
+  'PageDown',
+  'Escape',
+])
+
+/**
+ * True for keys the audience window passes on to the control window: GO, Back, slide keys,
+ * Escape and single character keys such as B, L and sound hotkeys. Number keys (which switch
+ * views) and the help keys stay in the audience window.
+ */
+export function isForwardKey(key: unknown): key is string {
+  if (typeof key !== 'string') return false
+  if (FORWARD_KEYS.has(key)) return true
+  return key.length === 1 && !/^[0-9?/]$/.test(key) && key.trim() !== ''
+}
 
 function hasOnlyKeys(v: Record<string, unknown>, keys: readonly string[]): boolean {
   if (Object.getPrototypeOf(v) !== Object.prototype && Object.getPrototypeOf(v) !== null) {
@@ -95,6 +129,13 @@ export function parseMessage(data: unknown): SyncMessage | null {
           : null
       }
       if (data.type === 'show') {
+        if (hasOnlyKeys(data, ['v', 'from', 'type', 'screen', 'sender'])) {
+          if (!isId(data.sender)) return null
+          const screen = parseScreen(data.screen)
+          return screen
+            ? { v: 1, from: 'control', type: 'show', screen, sender: data.sender }
+            : null
+        }
         if (!hasOnlyKeys(data, ['v', 'from', 'type', 'screen'])) return null
         const screen = parseScreen(data.screen)
         return screen ? { v: 1, from: 'control', type: 'show', screen } : null
@@ -108,12 +149,20 @@ export function parseMessage(data: unknown): SyncMessage | null {
           : null
       }
       if (data.type === 'status') {
-        if (!hasOnlyKeys(data, ['v', 'from', 'type', 'screen', 'problem'])) return null
+        const withBy = hasOnlyKeys(data, ['v', 'from', 'type', 'screen', 'problem', 'by'])
+        if (!withBy && !hasOnlyKeys(data, ['v', 'from', 'type', 'screen', 'problem'])) return null
         const screen = data.screen === null ? null : parseScreen(data.screen)
         if (data.screen !== null && !screen) return null
         const problem = data.problem === null ? null : PROBLEMS.find((p) => p === data.problem)
         if (problem === undefined) return null
-        return { v: 1, from: 'audience', type: 'status', screen, problem }
+        if (!withBy) return { v: 1, from: 'audience', type: 'status', screen, problem }
+        if (data.by !== null && !isId(data.by)) return null
+        return { v: 1, from: 'audience', type: 'status', screen, problem, by: data.by }
+      }
+      if (data.type === 'key') {
+        if (!hasOnlyKeys(data, ['v', 'from', 'type', 'key', 'shift'])) return null
+        if (!isForwardKey(data.key) || typeof data.shift !== 'boolean') return null
+        return { v: 1, from: 'audience', type: 'key', key: data.key, shift: data.shift }
       }
       return null
     }

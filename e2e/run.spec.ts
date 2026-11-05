@@ -120,6 +120,18 @@ test('run a small workshop with the space bar and drive the audience window', as
   await page.keyboard.press('Space')
   await expect(page.getByTestId('run-note')).toHaveText(/End of the script/)
 
+  // Keys pressed while the audience window has focus still reach Run mode.
+  await popup.bringToFront()
+  await popup.keyboard.press('Shift+Space')
+  await expect(popup.getByRole('img', { name: 'Slide 3' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Jump to \[TIMER 3s\]/ })).toHaveAttribute(
+    'aria-current',
+    'step',
+  )
+  await popup.keyboard.press('PageUp')
+  await expect(popup.getByRole('img', { name: 'Slide 2' })).toBeVisible()
+  await page.bringToFront()
+
   // Reset clears the session clock.
   await page.getByRole('button', { name: 'Reset session' }).click()
   await expect(page.getByTestId('elapsed')).toHaveText('0:00')

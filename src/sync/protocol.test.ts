@@ -130,3 +130,37 @@ test('compares screens', () => {
   expect(sameScreen(a, { ...a, index: 2 })).toBe(false)
   expect(sameScreen(a, { ...a, number: 3 })).toBe(false)
 })
+
+test('key messages and sender ids are checked', () => {
+  expect(parseMessage({ v: 1, from: 'audience', type: 'key', key: ' ', shift: false })).toEqual({
+    v: 1,
+    from: 'audience',
+    type: 'key',
+    key: ' ',
+    shift: false,
+  })
+  for (const key of ['PageDown', 'b', 'Escape']) {
+    expect(parseMessage({ v: 1, from: 'audience', type: 'key', key, shift: true })).not.toBeNull()
+  }
+  for (const bad of [
+    { v: 1, from: 'audience', type: 'key', key: '1', shift: false },
+    { v: 1, from: 'audience', type: 'key', key: 'F5', shift: false },
+    { v: 1, from: 'audience', type: 'key', key: ' ', shift: 'no' },
+    { v: 1, from: 'audience', type: 'key', key: ' ', shift: false, extra: 1 },
+  ]) {
+    expect(parseMessage(bad)).toBeNull()
+  }
+  const screen = { mode: 'blank' }
+  expect(parseMessage({ v: 1, from: 'control', type: 'show', screen, sender: 'abc' })).toEqual({
+    v: 1,
+    from: 'control',
+    type: 'show',
+    screen,
+    sender: 'abc',
+  })
+  expect(parseMessage({ v: 1, from: 'control', type: 'show', screen, sender: '' })).toBeNull()
+  const status = { v: 1, from: 'audience', type: 'status', screen, problem: null }
+  expect(parseMessage({ ...status, by: 'abc' })).toMatchObject({ by: 'abc' })
+  expect(parseMessage({ ...status, by: null })).toMatchObject({ by: null })
+  expect(parseMessage({ ...status, by: 5 })).toBeNull()
+})

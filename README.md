@@ -115,7 +115,8 @@ computer. Clearing your browser data deletes them, so use **Export** to keep a b
 ## Known limits
 
 - Slides are images, so animations and embedded videos in your deck do not play.
-- Sound hotkeys and GO only work while the PlanOnMe control window has focus.
+- Sound hotkeys and GO work while a PlanOnMe window (the control window or the audience window)
+  has focus. They do not work while Zoom or another app has focus.
 - See [PLAN.md](PLAN.md) for what is planned next, such as a desktop app and sign-in imports.
 
 The earlier 2010 Rails prototype is in this repository's git history.

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import {
+  isForwardKey,
   sameScreen,
   type AudienceScreen,
   type SlideProblem,
@@ -41,6 +42,8 @@ export function AudienceApp({
   const target = useRef<AudienceScreen | null>(null)
   const problem = useRef<SlideProblem | null>(null)
   const seq = useRef(0)
+  // The control window that sent the screen shown now, or null.
+  const shownBy = useRef<string | null>(null)
   const url = useRef<string | null>(null)
 
   useEffect(() => {
@@ -56,6 +59,7 @@ export function AudienceApp({
         type: 'status',
         screen: target.current,
         problem: problem.current,
+        by: shownBy.current,
       })
     }
 
@@ -104,8 +108,19 @@ export function AudienceApp({
     const unlisten = link.listen((message) => {
       if (message.from !== 'control') return
       if (message.type === 'hello') report()
-      else void show(message.screen)
+      else {
+        shownBy.current = message.sender ?? null
+        void show(message.screen)
+      }
     })
+    // This window often has focus, for example right after it opened. Pass the app's keys on to
+    // the control window, so GO, a clicker and Escape still work.
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || !isForwardKey(e.key)) return
+      e.preventDefault()
+      link.post({ v: 1, from: 'audience', type: 'key', key: e.key, shift: e.shiftKey })
+    }
+    window.addEventListener('keydown', onKeyDown)
     link.post({ v: 1, from: 'audience', type: 'hello' })
     const bye = () => link.post({ v: 1, from: 'audience', type: 'bye' })
     window.addEventListener('pagehide', bye)
@@ -115,6 +130,7 @@ export function AudienceApp({
       target.current = null
       unlisten()
       window.removeEventListener('pagehide', bye)
+      window.removeEventListener('keydown', onKeyDown)
     }
   }, [channel, loadSlide])
 

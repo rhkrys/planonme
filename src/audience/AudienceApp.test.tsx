@@ -175,3 +175,21 @@ test('a double click does not make the window full screen', async () => {
   await userEvent.dblClick(screen.getByTestId('audience'))
   expect(request).not.toHaveBeenCalled()
 })
+
+test('passes keys on to the control window', async () => {
+  const t = setup()
+  await act(async () => {})
+  await t.send({ v: 1, from: 'control', type: 'show', screen: { mode: 'blank' }, sender: 'c1' })
+  expect(last(t.statuses())).toMatchObject({ by: 'c1' })
+  await act(async () => {
+    await userEvent.keyboard(' ')
+    await userEvent.keyboard('{PageDown}')
+    await userEvent.keyboard('2')
+    await new Promise((r) => setTimeout(r, 0))
+  })
+  const keys = t.received.filter((m) => m.from === 'audience' && m.type === 'key')
+  expect(keys).toEqual([
+    { v: 1, from: 'audience', type: 'key', key: ' ', shift: false },
+    { v: 1, from: 'audience', type: 'key', key: 'PageDown', shift: false },
+  ])
+})

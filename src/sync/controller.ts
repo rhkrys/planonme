@@ -76,6 +76,35 @@ export interface SyncOptions {
   workshop: StoreApi<WorkshopState>
   storage?: Storage | null
   now?: () => number
+  /**
+   * Called with a key pressed in the audience window, when this control window is the one whose
+   * screen the audience window shows. Defaults to replayKey.
+   */
+  onKey?: (key: string, shift: boolean) => void
+}
+
+/** Acts on a key from the audience window as if it was pressed in this window. */
+export function replayKey(key: string, shift: boolean) {
+  try {
+    window.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key,
+        code: key === ' ' ? 'Space' : '',
+        shiftKey: shift,
+        cancelable: true,
+      }),
+    )
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+function randomId(): string {
+  try {
+    return crypto.randomUUID()
+  } catch {
+    return `c${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`
+  }
 }
 
 /** Starts the link. Returns a function that stops it. */
@@ -85,7 +114,12 @@ export function startAudienceSync({
   workshop,
   storage = defaultStorage(),
   now = () => Date.now(),
+  onKey = replayKey,
 }: SyncOptions): () => void {
+  const myId = randomId()
+  // Who sent the screen the audience window reported last: this window, another one, or
+  // unknown (null). Keys from the audience window go to the window it shows.
+  let shownBy: 'me' | 'other' | null = null
   const saved = readSaved(storage)
   // Set while this module changes the audience store, to tell its changes from the user's.
   let applying = false
@@ -132,7 +166,7 @@ export function startAudienceSync({
     if (!force && yieldedFrom && sameScreen(screen, yieldedFrom)) return
     yieldedFrom = null
     lastSent = screen
-    channel.post({ v: 1, from: 'control', type: 'show', screen })
+    channel.post({ v: 1, from: 'control', type: 'show', screen, sender: myId })
   }
 
   /** Keeps the slide valid for the current workshop and its decks. */
@@ -185,10 +219,19 @@ export function startAudienceSync({
     }
     if (message.type === 'bye') {
       awaitingSince = null
+      shownBy = null
       apply({ connected: false, reported: null, problem: null })
       return
     }
+    if (message.type === 'key') {
+      const mine = shownBy === 'me' || (shownBy === null && !yieldedFrom)
+      if (mine && canSend()) onKey(message.key, message.shift)
+      return
+    }
     awaitingSince = null
+    if (message.by !== undefined) {
+      shownBy = message.by === null ? null : message.by === myId ? 'me' : 'other'
+    }
     apply({ connected: true, reported: message.screen, problem: message.problem })
     if (adoptOpen && !userActed && message.screen) {
       adopt(message.screen)
