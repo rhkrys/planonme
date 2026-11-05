@@ -101,7 +101,10 @@ export async function createWorkshop(db: PlanOnMeDB, title: string): Promise<Wor
 
 /** Saves a workshop after cleaning it, and returns the saved copy. */
 export async function saveWorkshop(db: PlanOnMeDB, workshop: Workshop): Promise<Workshop> {
-  const clean = normalizeWorkshop({ ...workshop, updatedAt: Date.now() })
+  // Always later than the copy it replaces, even within one millisecond, so another tab can tell
+  // that it changed.
+  const updatedAt = Math.max(Date.now(), (workshop.updatedAt || 0) + 1)
+  const clean = normalizeWorkshop({ ...workshop, updatedAt })
   if (!clean) throw new Error('Workshop data is not valid')
   await db.workshops.put(clean)
   return clean
