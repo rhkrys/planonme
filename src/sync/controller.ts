@@ -107,6 +107,10 @@ export function startAudienceSync({
   let waited = !!saved
   let lastSent: AudienceScreen | null = null
   let awaitingSince: number | null = null
+  // Set when another control window (a second PlanOnMe tab) sent a screen after this one did.
+  // Holds what this window wanted then. This window then stops resending its own screen until
+  // what it wants changes, so two windows never fight over the audience window.
+  let yieldedFrom: AudienceScreen | null = null
 
   function decks() {
     return workshop.getState().media?.decks ?? []
@@ -125,6 +129,8 @@ export function startAudienceSync({
     if (!channel || !canSend()) return
     const screen = desired()
     if (!force && sameScreen(screen, lastSent)) return
+    if (!force && yieldedFrom && sameScreen(screen, yieldedFrom)) return
+    yieldedFrom = null
     lastSent = screen
     channel.post({ v: 1, from: 'control', type: 'show', screen })
   }
@@ -164,7 +170,14 @@ export function startAudienceSync({
   }
 
   function onMessage(message: SyncMessage) {
-    if (message.from !== 'audience') return
+    if (message.from === 'control') {
+      // Another control window drives the audience window now. The newest action wins.
+      if (message.type === 'show') {
+        yieldedFrom = desired()
+        lastSent = message.screen
+      }
+      return
+    }
     if (message.type === 'hello') {
       // A new or reloaded audience window: tell it what to show.
       if (canSend()) send(true)
@@ -184,7 +197,8 @@ export function startAudienceSync({
       return
     }
     // The audience window shows something else (it missed a message, for example): resend.
-    if (canSend() && !sameScreen(message.screen, desired())) send(true)
+    // Not after another control window took over, or the two would resend forever.
+    if (canSend() && !yieldedFrom && !sameScreen(message.screen, desired())) send(true)
   }
 
   const unlisten = channel?.listen(onMessage)

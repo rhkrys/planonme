@@ -291,3 +291,64 @@ test('storage that throws does not break anything', async () => {
   expect(t.shows()).toEqual([slide('a', 0, 1), slide('a', 1, 2)])
   t.stop()
 })
+
+test('two control windows do not fight over the audience window', async () => {
+  const ws = (id: string) =>
+    createStore(() => ({
+      status: 'ready',
+      current: workshop('w1'),
+      media: media(['a', 3]),
+      id,
+    })) as unknown as StoreApi<WorkshopState>
+  const bus = createFakeBus()
+  const saved = (index: number) =>
+    memoryStorage({
+      [STORAGE_KEY]: JSON.stringify({
+        workshopId: 'w1',
+        slide: { deckId: 'a', index },
+        overlay: 'none',
+      }),
+    })
+  const wsA = ws('A')
+  const wsB = ws('B')
+  const audA = createAudienceStore(() => wsA.getState().media?.decks ?? [])
+  const audB = createAudienceStore(() => wsB.getState().media?.decks ?? [])
+  const stopA = startAudienceSync({
+    channel: bus.endpoint(),
+    audience: audA,
+    workshop: wsA,
+    storage: saved(0),
+  })
+  const stopB = startAudienceSync({
+    channel: bus.endpoint(),
+    audience: audB,
+    workshop: wsB,
+    storage: saved(1),
+  })
+  // A stand-in audience window that answers every show with a status, as the real one does.
+  const win = bus.endpoint()
+  let shows = 0
+  let current: AudienceScreen | null = null
+  win.listen((m) => {
+    if (m.from !== 'control') return
+    if (m.type === 'show') {
+      shows++
+      if (shows > 200) return
+      current = m.screen
+    }
+    win.post({ v: 1, from: 'audience', type: 'status', screen: current, problem: null })
+  })
+  win.post({ v: 1, from: 'audience', type: 'hello' })
+  for (let i = 0; i < 20; i++) await settle()
+  expect(shows).toBeLessThan(10)
+  // The window where the user acts last wins.
+  audA.getState().step(1)
+  for (let i = 0; i < 20; i++) await settle()
+  expect(current).toEqual(slide('a', 1, 2))
+  audB.getState().step(1)
+  for (let i = 0; i < 20; i++) await settle()
+  expect(current).toEqual(slide('a', 2, 3))
+  expect(shows).toBeLessThan(20)
+  stopA()
+  stopB()
+})
