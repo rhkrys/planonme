@@ -1,5 +1,6 @@
 import { hotkeyFromKey, hotkeyProblem } from '../audio/hotkeys'
 import { soundKey } from '../cues/check'
+import { renumberSlideCues, slideNumberMap, type DeckCount } from '../slides/renumber'
 import type { PlanOnMeDB } from './db'
 import { newId } from './ids'
 import { COLOR_PATTERN, LIMITS } from './limits'
@@ -239,6 +240,30 @@ export async function renameSlideDeck(db: PlanOnMeDB, deckId: string, name: stri
   })
 }
 
+function counts(decks: readonly SlideDeck[]): DeckCount[] {
+  return decks.map((d) => ({ id: d.id, slideCount: d.slides.length }))
+}
+
+/**
+ * The blocks with their [SLIDE n] cues rewritten for a new deck order, so every cue keeps showing
+ * the same slide. Cues of a deleted deck become [SLIDE ?].
+ */
+function blocksForDecks(
+  blocks: Workshop['blocks'],
+  before: readonly DeckCount[],
+  after: readonly DeckCount[],
+): Workshop['blocks'] {
+  const map = slideNumberMap(before, after)
+  let changed = false
+  const next = blocks.map((b) => {
+    const result = renumberSlideCues(b.script, map)
+    if (result.changed === 0) return b
+    changed = true
+    return { ...b, script: result.script }
+  })
+  return changed ? next : blocks
+}
+
 /** Deletes a slide deck and removes it from its workshop. */
 export async function deleteSlideDeck(
   db: PlanOnMeDB,
@@ -249,10 +274,16 @@ export async function deleteSlideDeck(
     const row: unknown = await db.slideDecks.get(deckId)
     const deck = normalizeSlideDeck(row)
     if (deck && deck.workshopId !== workshopId) throw new DeckNotFoundError()
-    await db.slideDecks.delete(deckId)
     const w = await getWorkshop(db, workshopId)
+    const before = w ? counts(await listSlideDecks(db, w)) : []
+    await db.slideDecks.delete(deckId)
     if (w && w.slideDeckIds.includes(deckId)) {
-      await saveWorkshop(db, { ...w, slideDeckIds: w.slideDeckIds.filter((id) => id !== deckId) })
+      const after = before.filter((d) => d.id !== deckId)
+      await saveWorkshop(db, {
+        ...w,
+        slideDeckIds: w.slideDeckIds.filter((id) => id !== deckId),
+        blocks: blocksForDecks(w.blocks, before, after),
+      })
     }
   })
 }
@@ -270,12 +301,18 @@ export async function moveSlideDeck(
   return db.transaction('rw', db.workshops, db.slideDecks, async () => {
     const w = await getWorkshop(db, workshopId)
     if (!w) throw new WorkshopNotFoundError()
-    const ids = (await listSlideDecks(db, w)).map((d) => d.id)
+    const before = counts(await listSlideDecks(db, w))
+    const ids = before.map((d) => d.id)
     const from = ids.indexOf(deckId)
     if (from === -1) throw new DeckNotFoundError()
     const to = Math.min(ids.length - 1, Math.max(0, from + Math.trunc(delta)))
     ids.splice(to, 0, ...ids.splice(from, 1))
-    const saved = await saveWorkshop(db, { ...w, slideDeckIds: ids })
+    const after = ids.flatMap((id) => before.filter((d) => d.id === id))
+    const saved = await saveWorkshop(db, {
+      ...w,
+      slideDeckIds: ids,
+      blocks: blocksForDecks(w.blocks, before, after),
+    })
     return saved.slideDeckIds
   })
 }

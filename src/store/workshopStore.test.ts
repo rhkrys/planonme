@@ -385,3 +385,28 @@ test('an edit in a second tab does not undo block edits made in the first', asyn
   await tabA.getState().reloadCurrent()
   expect(tabA.getState().current?.blocks[1]?.title).toBe('Renamed')
 })
+
+test('moving or deleting a deck keeps slide cues on the same slides', async () => {
+  const store = makeStore()
+  await store.getState().init()
+  const id = store.getState().currentId ?? ''
+  const png = () => new Blob([fakePngBytes()], { type: 'image/png' })
+  const three = () => [png(), png(), png()]
+  await store.getState().addSlideDeck(id, { name: 'A', source: 'pdf', slides: three() })
+  await store.getState().addSlideDeck(id, { name: 'B', source: 'pdf', slides: three() })
+  const blank = { kind: 'talk' as const, durationMin: 5, goal: '', notes: '' }
+  await store.getState().updateCurrent({
+    blocks: [{ ...blank, id: 'b1', title: 'One', script: 'B first [SLIDE 4], A last [SLIDE 3]' }],
+  })
+  const [, b] = store.getState().media?.decks ?? []
+
+  expect(await store.getState().moveSlideDeck(b?.id ?? '', -1)).toBe(true)
+  const script = () => store.getState().current?.blocks[0]?.script
+  expect(script()).toBe('B first [SLIDE 1], A last [SLIDE 6]')
+  expect(store.getState().notice).toMatch(/renumbered/)
+  const stored = await getWorkshop(db, id)
+  expect(stored?.blocks[0]?.script).toBe('B first [SLIDE 1], A last [SLIDE 6]')
+
+  expect(await store.getState().deleteSlideDeck(b?.id ?? '')).toBe(true)
+  expect(script()).toBe('B first [SLIDE ?], A last [SLIDE 3]')
+})

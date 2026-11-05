@@ -460,8 +460,8 @@ function DeckList({ decks }: { decks: SlideDeck[] }) {
     <section ref={listRef} className="decks" aria-labelledby="decks-title">
       <h2 id="decks-title">Decks</h2>
       <p className="hint muted">
-        Slides are numbered across all decks in this order. Moving or deleting a deck changes the
-        numbers that [SLIDE n] cues point to.
+        Slides are numbered across all decks in this order. Moving or deleting a deck renumbers the
+        [SLIDE n] cues in the script, so they still show the same slides.
       </p>
       <ol className="deck-list">
         {decks.map((deck, i) => (

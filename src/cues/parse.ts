@@ -99,6 +99,13 @@ export function parseToken(inner: string): TokenResult {
   switch (word) {
     case 'SLIDE': {
       if (arg === '') return { kind: 'invalid', keyword: 'SLIDE', message: 'Add a slide number.' }
+      if (arg === '?') {
+        return {
+          kind: 'invalid',
+          keyword: 'SLIDE',
+          message: 'This slide was in a deleted deck. Add a slide number.',
+        }
+      }
       if (!/^\d+$/.test(arg)) {
         return { kind: 'invalid', keyword: 'SLIDE', message: 'Slide number must be a number.' }
       }

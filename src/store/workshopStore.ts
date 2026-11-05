@@ -97,6 +97,10 @@ export interface WorkshopState {
 
 export const FIRST_WORKSHOP_TITLE = 'My workshop'
 
+/** Shown after a deck move or delete changed [SLIDE n] cues in the script. */
+export const SLIDE_CUES_NOTICE =
+  'Slide cues in the script were renumbered, so they still show the same slides. Cues for a deleted deck now read [SLIDE ?].'
+
 function describe(err: unknown, fallback: string): string {
   if (
     err instanceof BackupError ||
@@ -152,14 +156,25 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
 
     /**
      * After a deck or sound change, takes the stored deck and sound order into the current
-     * workshop and reloads the media summary. Other fields of current are left alone, so unsaved
-     * edits stay.
+     * workshop and reloads the media summary. Blocks are merged, so unsaved edits stay. True when
+     * the stored scripts changed, as they do when a deck move rewrites [SLIDE n] cues.
      */
-    async function syncMedia(workshopId: string): Promise<void> {
-      if (get().current?.id !== workshopId) return
+    async function syncMedia(workshopId: string): Promise<boolean> {
+      if (get().current?.id !== workshopId) return false
       const stored = await getWorkshop(getDb(), workshopId)
       if (!stored) throw new WorkshopNotFoundError()
       const media = await loadMedia(stored)
+      const current = get().current
+      // A deck move or delete rewrites [SLIDE n] cues in the stored blocks. Take those in too,
+      // merged with any edit of this tab that is not saved yet.
+      const blocks =
+        current?.id === workshopId && baseBlocks?.id === workshopId
+          ? mergeBlocks(baseBlocks.blocks, current.blocks, stored.blocks)
+          : (current?.blocks ?? stored.blocks)
+      const was = new Map((baseBlocks?.blocks ?? []).map((b) => [b.id, b.script]))
+      const cuesChanged =
+        current?.id === workshopId && stored.blocks.some((b) => was.get(b.id) !== b.script)
+      if (current?.id === workshopId) setBase(stored)
       set((s) =>
         s.current?.id === workshopId
           ? {
@@ -167,11 +182,13 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
                 ...s.current,
                 slideDeckIds: stored.slideDeckIds,
                 soundIds: stored.soundIds,
+                blocks,
               },
               media,
             }
           : {},
       )
+      return cuesChanged
     }
 
     async function attempt(action: () => Promise<void>, failure: string): Promise<boolean> {
@@ -378,8 +395,8 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
           const id = get().currentId
           if (!id) return
           await deleteSlideDeck(getDb(), id, deckId)
-          await syncMedia(id)
-          set({ error: null, notice: null })
+          const cues = await syncMedia(id)
+          set({ error: null, notice: cues ? SLIDE_CUES_NOTICE : null })
         }, 'Could not delete the slide deck.')
       },
 
@@ -388,8 +405,8 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
           const id = get().currentId
           if (!id) return
           await moveSlideDeck(getDb(), id, deckId, delta)
-          await syncMedia(id)
-          set({ error: null, notice: null })
+          const cues = await syncMedia(id)
+          set({ error: null, notice: cues ? SLIDE_CUES_NOTICE : null })
         }, 'Could not move the slide deck.')
       },
 
