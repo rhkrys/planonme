@@ -3,6 +3,7 @@ import {
   AudioEngine,
   DecodeError,
   FADE_SECONDS,
+  MAX_SOUND_SECONDS,
   MAX_VOICES,
   PANIC_FADE_SECONDS,
   QUICK_FADE_SECONDS,
@@ -151,9 +152,12 @@ function sound(id: string, patch: Partial<Sound> = {}): Sound {
   }
 }
 
+/** Fake audio files have no real header to read the length from. */
+const noLength = async () => null
+
 function setup(sounds: Sound[]) {
   const ctx = new FakeContext()
-  const engine = new AudioEngine(() => ctx)
+  const engine = new AudioEngine(() => ctx, noLength)
   engine.setSounds(sounds)
   return { ctx, engine }
 }
@@ -472,7 +476,7 @@ test('the test tone reports a problem instead of throwing', async () => {
   ctx.createOscillator = () => {
     throw new Error('NotSupportedError')
   }
-  const engine = new AudioEngine(() => ctx)
+  const engine = new AudioEngine(() => ctx, noLength)
   vi.spyOn(console, 'error').mockImplementation(() => undefined)
   expect(await engine.playTestTone()).toBe(false)
   expect(engine.getSnapshot().error).toBe('Could not play the test tone.')
@@ -495,4 +499,56 @@ test('checkSound decodes without playing and reports bad files', async () => {
 
   const none = new AudioEngine(() => null)
   expect(await none.checkSound(a)).toBe('This browser cannot play audio.')
+})
+
+test('the cue keyword decides how a sound plays, not the stored kind', async () => {
+  const { ctx, engine } = setup([
+    sound('short', { name: 'Break loop', kind: 'sfx' }),
+    sound('bed', { name: 'Bed', kind: 'music' }),
+  ])
+  // [MUSIC x] on a sound stored as an effect fades in like music.
+  await engine.playCue({ type: 'music', name: 'Break loop' })
+  const short = ctx.sources[0]
+  expect(short?.output?.gain.events[0]).toEqual(['set', 0, 10])
+  expect(engine.getSnapshot().playing.short?.kind).toBe('music')
+  // [STOP MUSIC] stops it.
+  await engine.playCue({ type: 'stopMusic' })
+  expect(short?.stoppedAt).toBe(10 + FADE_SECONDS)
+
+  // [SFX x] on a music sound plays it as an effect and leaves other music alone.
+  ctx.currentTime = 20
+  await engine.playCue({ type: 'music', name: 'Break loop' })
+  await engine.playCue({ type: 'sfx', name: 'Bed' })
+  expect(ctx.sources[1]?.stoppedAt).toBeNull()
+  expect(engine.getSnapshot().playing.bed?.kind).toBe('sfx')
+})
+
+test('a sound too long to decode safely is refused before decoding', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => {})
+  const ctx = new FakeContext()
+  const long = sound('long', { name: 'Long' })
+  const engine = new AudioEngine(
+    () => ctx,
+    async (blob) => (blob === long.blob ? MAX_SOUND_SECONDS + 60 : 5),
+  )
+  engine.setSounds([long, sound('ok')])
+  await expect(engine.probe(long.blob)).rejects.toThrow(/longer than 15 minutes/)
+  expect(await engine.play('long')).toBe(false)
+  expect(engine.getSnapshot().error).toMatch(/Could not play "Long". This sound is longer/)
+  expect(await engine.checkSound(long)).toMatch(/longer than 15 minutes/)
+  expect(ctx.decodes).toBe(0)
+  expect(await engine.play('ok')).toBe(true)
+
+  // When the length cannot be read first, a huge decoded result is still dropped.
+  const huge = new FakeContext()
+  huge.decodeAudioData = async () => ({
+    duration: 7200,
+    length: 7200 * 44_100,
+    numberOfChannels: 2,
+  })
+  const blind = new AudioEngine(
+    () => huge,
+    async () => null,
+  )
+  await expect(blind.probe(long.blob)).rejects.toThrow(/longer than 15 minutes/)
 })

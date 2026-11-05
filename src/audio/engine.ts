@@ -22,6 +22,16 @@ export const QUICK_FADE_SECONDS = 0.08
 export const MAX_VOICES = 32
 /** Roughly how much decoded audio (in bytes) to keep cached. */
 export const MAX_CACHE_BYTES = 512 * 1024 * 1024
+/**
+ * Longest sound that is decoded, in seconds. Decoded audio takes far more memory than the file:
+ * a 100 MB MP3 can be close to two hours long and needs gigabytes once decoded, which can crash
+ * the tab. 15 minutes of stereo audio is about 350 MB decoded.
+ */
+export const MAX_SOUND_SECONDS = 15 * 60
+/** Most decoded audio for one sound, in bytes. A safety net when the length is not known. */
+export const MAX_DECODED_BYTES = MAX_SOUND_SECONDS * 48_000 * 2 * 4
+/** Message for a sound that is too long. */
+export const TOO_LONG_MESSAGE = `This sound is longer than ${MAX_SOUND_SECONDS / 60} minutes. Use a shorter file, or loop a shorter part.`
 /** Pitch of the pre-flight test tone, in hertz. */
 export const TEST_TONE_HZ = 440
 /** Seconds the test tone lasts. */
@@ -108,6 +118,54 @@ export interface PlayOptions {
    * starting again. Cues leave this off, so [MUSIC x] keeps x playing.
    */
   toggle?: boolean
+  /**
+   * Play as music or as an effect, whatever the stored kind. Cues set this from their keyword,
+   * so [MUSIC x] fades and crossfades and [STOP MUSIC] stops it.
+   */
+  as?: SoundKind
+}
+
+/**
+ * Reads the length of an audio file in seconds without decoding it, or null when it cannot
+ * tell. Used to refuse files that would need too much memory once decoded.
+ */
+export type ReadDuration = (blob: Blob) => Promise<number | null>
+
+/** Reads the length from the file's header with an audio element. */
+export function browserDuration(blob: Blob, timeoutMs = 4000): Promise<number | null> {
+  if (typeof document === 'undefined' || typeof URL.createObjectURL !== 'function') {
+    return Promise.resolve(null)
+  }
+  return new Promise((resolve) => {
+    let finished = false
+    let url: string | null = null
+    let audio: HTMLAudioElement | null = null
+    const timer = setTimeout(() => done(null), timeoutMs)
+    function done(value: number | null) {
+      if (finished) return
+      finished = true
+      clearTimeout(timer)
+      if (audio) {
+        audio.onloadedmetadata = null
+        audio.onerror = null
+        audio.removeAttribute('src')
+      }
+      if (url) URL.revokeObjectURL(url)
+      resolve(value)
+    }
+    try {
+      const el = document.createElement('audio')
+      audio = el
+      el.preload = 'metadata'
+      el.onloadedmetadata = () =>
+        done(Number.isFinite(el.duration) && el.duration > 0 ? el.duration : null)
+      el.onerror = () => done(null)
+      url = URL.createObjectURL(blob)
+      el.src = url
+    } catch {
+      done(null)
+    }
+  })
 }
 
 interface Voice {
@@ -191,9 +249,14 @@ export class AudioEngine {
   private snapshot: EngineSnapshot
 
   private readonly makeContext: () => AudioContextLike | null
+  private readonly readDuration: ReadDuration
 
-  constructor(makeContext: () => AudioContextLike | null = browserContext) {
+  constructor(
+    makeContext: () => AudioContextLike | null = browserContext,
+    readDuration: ReadDuration = browserDuration,
+  ) {
     this.makeContext = makeContext
+    this.readDuration = readDuration
     this.masterVolume = readMaster()
     this.snapshot = this.buildSnapshot()
   }
@@ -303,9 +366,10 @@ export class AudioEngine {
     if (!ctx) return this.fail('This browser cannot play audio.')
     if (ctx.state === 'suspended') ctx.resume().catch(() => undefined)
 
+    const kind = options.as ?? sound.kind
     const active = this.voices.filter((v) => v.soundId === soundId && !v.stopping)
     let token = this.musicToken
-    if (sound.kind === 'music') {
+    if (kind === 'music') {
       if (active.length > 0) {
         if (options.toggle) {
           this.musicToken++
@@ -329,6 +393,8 @@ export class AudioEngine {
       buffer = await this.buffer(sound)
     } catch (err) {
       console.error(err)
+      if (err instanceof DecodeError)
+        return this.fail(`Could not play "${sound.name}". ${err.message}`)
       return this.fail(
         `Could not play "${sound.name}". The file may be damaged, or this browser cannot play it.`,
       )
@@ -342,12 +408,12 @@ export class AudioEngine {
     // Something newer happened while decoding: a panic stop, another music request, or the
     // sound was deleted.
     if (generation !== this.generation) return false
-    if (sound.kind === 'music' && token !== this.musicToken) return false
+    if (kind === 'music' && token !== this.musicToken) return false
     const current = this.sounds.get(soundId)
     if (!current) return false
 
     try {
-      this.start(ctx, current, buffer)
+      this.start(ctx, current, buffer, kind)
     } catch (err) {
       console.error(err)
       return this.fail(`Could not play "${current.name}".`)
@@ -357,11 +423,14 @@ export class AudioEngine {
     return true
   }
 
-  /** Plays the sound with this name, as a cue would. False if there is no such sound. */
-  async playByName(name: string): Promise<boolean> {
+  /**
+   * Plays the sound with this name, as a cue would, as music or as an effect when as is given.
+   * False if there is no such sound.
+   */
+  async playByName(name: string, as?: SoundKind): Promise<boolean> {
     const sound = this.findByName(name)
     if (!sound) return this.fail(`There is no sound named "${name}".`)
-    return this.play(sound.id)
+    return this.play(sound.id, as ? { as } : {})
   }
 
   /** Fires a script cue: [SFX name], [MUSIC name] or [STOP MUSIC]. */
@@ -370,7 +439,7 @@ export class AudioEngine {
       this.stopMusic()
       return true
     }
-    return this.playByName(cue.name)
+    return this.playByName(cue.name, cue.type)
   }
 
   /** Fades out the music. Sound effects keep playing. */
@@ -385,7 +454,8 @@ export class AudioEngine {
   /** Stops one sound, with a fade for music. */
   stop(soundId: string) {
     const sound = this.sounds.get(soundId)
-    if (sound?.kind === 'music') this.musicToken++
+    const musicPlays = this.voices.some((v) => v.soundId === soundId && v.kind === 'music')
+    if (sound?.kind === 'music' || musicPlays) this.musicToken++
     for (const v of [...this.voices]) {
       if (v.soundId === soundId && !v.stopping) {
         this.fadeOut(v, v.kind === 'music' ? FADE_SECONDS : QUICK_FADE_SECONDS)
@@ -460,6 +530,7 @@ export class AudioEngine {
       return null
     } catch (err) {
       console.error(err)
+      if (err instanceof DecodeError) return err.message
       return 'This file could not be read as audio. It may be damaged, or this browser cannot play it.'
     }
   }
@@ -485,14 +556,28 @@ export class AudioEngine {
   async probe(blob: Blob): Promise<{ duration: number; buffer: AudioBufferLike }> {
     const ctx = this.context()
     if (!ctx) throw new DecodeError('This browser cannot play audio.')
+    await this.checkLength(blob)
+    let buffer: AudioBufferLike
     try {
-      const buffer = await ctx.decodeAudioData(await blob.arrayBuffer())
+      buffer = await ctx.decodeAudioData(await blob.arrayBuffer())
       if (!(buffer.duration > 0)) throw new Error('empty audio')
-      return { duration: buffer.duration, buffer }
     } catch (err) {
       console.error(err)
       throw new DecodeError('This file could not be read as audio. It may be damaged.')
     }
+    if (tooBig(buffer)) throw new DecodeError(TOO_LONG_MESSAGE)
+    return { duration: buffer.duration, buffer }
+  }
+
+  /** Throws a DecodeError before decoding a file that is known to be too long. */
+  private async checkLength(blob: Blob): Promise<void> {
+    let seconds: number | null = null
+    try {
+      seconds = await this.readDuration(blob)
+    } catch {
+      seconds = null
+    }
+    if (seconds !== null && seconds > MAX_SOUND_SECONDS) throw new DecodeError(TOO_LONG_MESSAGE)
   }
 
   /** Puts an already decoded buffer in the cache, for example right after an upload. */
@@ -544,7 +629,13 @@ export class AudioEngine {
       size: sound.blob.size,
       type: sound.blob.type,
       bytes: 0,
-      buffer: sound.blob.arrayBuffer().then((data) => ctx.decodeAudioData(data)),
+      buffer: this.checkLength(sound.blob)
+        .then(() => sound.blob.arrayBuffer())
+        .then((data) => ctx.decodeAudioData(data))
+        .then((buffer) => {
+          if (tooBig(buffer)) throw new DecodeError(TOO_LONG_MESSAGE)
+          return buffer
+        }),
     }
     this.remember(sound.id, entry)
     try {
@@ -576,12 +667,12 @@ export class AudioEngine {
     }
   }
 
-  private start(ctx: AudioContextLike, sound: Sound, buffer: AudioBufferLike) {
+  private start(ctx: AudioContextLike, sound: Sound, buffer: AudioBufferLike, kind: SoundKind) {
     const master = this.master
     if (!master) throw new Error('No master gain')
     const now = ctx.currentTime
 
-    if (sound.kind === 'music') {
+    if (kind === 'music') {
       // Crossfade: the old track fades out while the new one fades in.
       for (const v of [...this.voices]) {
         if (v.kind === 'music' && !v.stopping) this.fadeOut(v, FADE_SECONDS)
@@ -599,7 +690,7 @@ export class AudioEngine {
     source.buffer = buffer
     source.loop = sound.loop
     const volume = clamp01(sound.volume, 1)
-    if (sound.kind === 'music') {
+    if (kind === 'music') {
       gain.gain.setValueAtTime(0, now)
       gain.gain.linearRampToValueAtTime(volume, now + FADE_SECONDS)
     } else {
@@ -610,7 +701,7 @@ export class AudioEngine {
 
     const voice: Voice = {
       soundId: sound.id,
-      kind: sound.kind,
+      kind,
       source,
       gain,
       startedAt: now,
@@ -725,6 +816,10 @@ export class AudioEngine {
 
 function bufferBytes(b: AudioBufferLike): number {
   return b.length * b.numberOfChannels * 4
+}
+
+function tooBig(b: AudioBufferLike): boolean {
+  return b.duration > MAX_SOUND_SECONDS + 1 || bufferBytes(b) > MAX_DECODED_BYTES
 }
 
 /** The app wide sound engine. */
