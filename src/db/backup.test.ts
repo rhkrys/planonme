@@ -22,6 +22,7 @@ import {
   listSounds,
   listWorkshops,
   saveWorkshop,
+  updateSound,
 } from './repo'
 
 let db: PlanOnMeDB
@@ -413,4 +414,27 @@ test('export refuses a sound larger than import allows', async () => {
   const err = await exportWorkshop(db, w.id).catch((e: unknown) => e)
   expect(err).toBeInstanceOf(BackupError)
   expect((err as Error).message).toMatch(/Sound 1 is larger than 100 MB/)
+})
+
+test('imported sounds get unique names that work in cues and no clashing hotkeys', async () => {
+  const file = validBackup()
+  const first = file.sounds[0]
+  if (!first) throw new Error('no sound')
+  file.sounds = [
+    { ...first, name: 'Clap', hotkey: 'a' },
+    { ...first, name: 'clap', hotkey: 'A' },
+    { ...first, name: 'Big [loud] bang', hotkey: ' ' },
+  ]
+  const w = await importWorkshop(db, jsonFile(file))
+  const stored = await getWorkshop(db, w.id)
+  if (!stored) throw new Error('no workshop')
+  const sounds = await listSounds(db, stored)
+  expect(sounds.map((s) => [s.name, s.hotkey])).toEqual([
+    ['Clap', 'a'],
+    ['clap 2', ''],
+    ['Big (loud) bang', ''],
+  ])
+  const clap = sounds[0]
+  if (!clap) throw new Error('no sound')
+  await expect(updateSound(db, w.id, clap.id, { name: 'Clap' })).resolves.toBeTruthy()
 })

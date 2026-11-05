@@ -289,7 +289,7 @@ export function cleanSoundName(name: string): string {
 }
 
 /** The name, or the name with a number added, so that no other sound has it. */
-function uniqueSoundName(name: string, others: readonly Sound[]): string {
+export function uniqueSoundName(name: string, others: readonly { name: string }[]): string {
   const taken = new Set(others.map((s) => soundKey(s.name)))
   if (!taken.has(soundKey(name))) return name
   for (let i = 2; ; i++) {

@@ -7,7 +7,15 @@ import type { PlanOnMeDB } from './db'
 import { newId } from './ids'
 import { COLOR_PATTERN, DATE_PATTERN, LIMITS, SLIDE_IMAGE_TYPES } from './limits'
 import { isAudioType, isRecord, normalizeTitle } from './normalize'
-import { getWorkshop, listSlideDecks, listSounds, listWorkshops } from './repo'
+import { normalizeHotkey } from '../audio/hotkeys'
+import {
+  cleanSoundName,
+  getWorkshop,
+  listSlideDecks,
+  listSounds,
+  listWorkshops,
+  uniqueSoundName,
+} from './repo'
 import {
   BLOCK_KINDS,
   DECK_SOURCES,
@@ -356,12 +364,20 @@ export function parseBackup(json: unknown): ParsedBackup {
     }
     const color = text(s.color, 7, `${what} color`)
     if (color !== '' && !COLOR_PATTERN.test(color)) fail(`${what} color must look like #ff8800.`)
+    // Apply the same rules as adding a sound in the app: a name that works in a cue and that no
+    // other sound has, and a hotkey that is allowed and not taken. A bad hotkey is dropped.
+    const name = uniqueSoundName(
+      cleanSoundName(text(s.name, LIMITS.maxTitleLength, `${what} name`)),
+      sounds,
+    )
+    const rawHotkey = normalizeHotkey(text(s.hotkey, LIMITS.maxHotkeyLength, `${what} hotkey`))
+    const hotkey = sounds.some((other) => other.hotkey === rawHotkey) ? '' : rawHotkey
     sounds.push({
-      name: normalizeTitle(text(s.name, LIMITS.maxTitleLength, `${what} name`), 'Untitled sound'),
+      name,
       kind: choice<SoundKind>(s.kind, SOUND_KINDS, `${what} kind`),
       loop: bool(s.loop, `${what} loop`),
       volume: s.volume,
-      hotkey: text(s.hotkey, LIMITS.maxHotkeyLength, `${what} hotkey`),
+      hotkey,
       color,
       media: { type, data, label: `${what} audio` },
     })
