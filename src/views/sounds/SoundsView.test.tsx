@@ -113,6 +113,7 @@ test('a playing sound shows its state', async () => {
     loading: [],
     master: 0.7,
     error: 'Could not play "Gong".',
+    testTone: false,
   })
   showSounds([s])
   render(<SoundsView />)

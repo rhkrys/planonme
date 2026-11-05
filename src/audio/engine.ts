@@ -22,6 +22,12 @@ export const QUICK_FADE_SECONDS = 0.08
 export const MAX_VOICES = 32
 /** Roughly how much decoded audio (in bytes) to keep cached. */
 export const MAX_CACHE_BYTES = 512 * 1024 * 1024
+/** Pitch of the pre-flight test tone, in hertz. */
+export const TEST_TONE_HZ = 440
+/** Seconds the test tone lasts. */
+export const TEST_TONE_SECONDS = 0.8
+/** Loudness of the test tone before the master volume, from 0 to 1. */
+export const TEST_TONE_LEVEL = 0.4
 
 // The parts of Web Audio the engine uses. Tests pass a fake context with the same shape.
 export interface AudioParamLike {
@@ -49,12 +55,20 @@ export interface BufferSourceLike extends AudioNodeLike {
   start(when?: number): void
   stop(when?: number): void
 }
+export interface OscillatorLike extends AudioNodeLike {
+  type: string
+  frequency: AudioParamLike
+  onended: (() => void) | null
+  start(when?: number): void
+  stop(when?: number): void
+}
 export interface AudioContextLike {
   readonly currentTime: number
   readonly state: string
   readonly destination: AudioNodeLike
   createGain(): GainNodeLike
   createBufferSource(): BufferSourceLike
+  createOscillator(): OscillatorLike
   decodeAudioData(data: ArrayBuffer): Promise<AudioBufferLike>
   resume(): Promise<void>
 }
@@ -82,6 +96,8 @@ export interface EngineSnapshot {
   master: number
   /** The last playback problem, readable for the user, or null. */
   error: string | null
+  /** True while the pre-flight test tone plays. */
+  testTone: boolean
 }
 
 export type EngineCue = { type: 'sfx' | 'music'; name: string } | { type: 'stopMusic' }
@@ -104,6 +120,11 @@ interface Voice {
   loop: boolean
   volume: number
   stopping: boolean
+}
+
+interface ToneVoice {
+  osc: OscillatorLike
+  gain: GainNodeLike
 }
 
 interface CacheEntry {
@@ -165,6 +186,7 @@ export class AudioEngine {
   /** Goes up whenever music is asked to start or stop, so only the newest request wins. */
   private musicToken = 0
   private error: string | null = null
+  private tone: ToneVoice | null = null
   private listeners = new Set<() => void>()
   private snapshot: EngineSnapshot
 
@@ -224,6 +246,7 @@ export class AudioEngine {
       loading: [...this.loading.keys()],
       master: this.masterVolume,
       error: this.error,
+      testTone: this.tone !== null,
     }
   }
 
@@ -379,8 +402,66 @@ export class AudioEngine {
       if (v.stopping) this.forceStop(v)
       else this.fadeOut(v, PANIC_FADE_SECONDS)
     }
+    this.stopTone()
     this.error = null
     this.emit()
+  }
+
+  /**
+   * Plays a short sine beep through the master volume, so the presenter can check that Zoom
+   * shares the app's sound. Resolves to false with snapshot.error set when it could not play.
+   */
+  async playTestTone(): Promise<boolean> {
+    const ctx = this.context()
+    const master = this.master
+    if (!ctx || !master) return this.fail('This browser cannot play audio.')
+    if (ctx.state === 'suspended') ctx.resume().catch(() => undefined)
+    this.stopTone()
+    let tone: ToneVoice
+    try {
+      const now = ctx.currentTime
+      const end = now + TEST_TONE_SECONDS
+      const osc = ctx.createOscillator()
+      const gain = ctx.createGain()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(TEST_TONE_HZ, now)
+      // Short ramps at both ends, so the beep does not click.
+      gain.gain.setValueAtTime(0, now)
+      gain.gain.linearRampToValueAtTime(TEST_TONE_LEVEL, now + 0.02)
+      gain.gain.setValueAtTime(TEST_TONE_LEVEL, end - 0.05)
+      gain.gain.linearRampToValueAtTime(0, end)
+      osc.connect(gain)
+      gain.connect(master)
+      tone = { osc, gain }
+      osc.onended = () => this.endTone(tone)
+      osc.start(now)
+      osc.stop(end)
+    } catch (err) {
+      console.error(err)
+      return this.fail('Could not play the test tone.')
+    }
+    this.tone = tone
+    // onended normally clears the tone. This is a safety net in case it never fires.
+    setTimeout(() => this.endTone(tone), (TEST_TONE_SECONDS + 1) * 1000)
+    this.error = null
+    this.emit()
+    return true
+  }
+
+  /**
+   * Decodes a sound to check that it can play, without playing it. The decoded audio is kept in
+   * the cache, so the first play is quick. Resolves to null when it works, or to a readable
+   * problem. Never throws, and never sets snapshot.error.
+   */
+  async checkSound(sound: Sound): Promise<string | null> {
+    if (!this.context()) return 'This browser cannot play audio.'
+    try {
+      await this.buffer(sound)
+      return null
+    } catch (err) {
+      console.error(err)
+      return 'This file could not be read as audio. It may be damaged, or this browser cannot play it.'
+    }
   }
 
   setMasterVolume(value: number) {
@@ -578,6 +659,30 @@ export class AudioEngine {
       // Disconnecting silences it in any case.
       this.remove(v)
     }
+  }
+
+  private stopTone() {
+    const tone = this.tone
+    if (!tone) return
+    try {
+      tone.osc.stop()
+    } catch {
+      // It already ended.
+    }
+    this.endTone(tone)
+  }
+
+  private endTone(tone: ToneVoice) {
+    if (this.tone !== tone) return
+    this.tone = null
+    tone.osc.onended = null
+    try {
+      tone.osc.disconnect()
+      tone.gain.disconnect()
+    } catch {
+      // Nothing to do: the nodes are dropped anyway.
+    }
+    this.emit()
   }
 
   private remove(v: Voice) {

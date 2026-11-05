@@ -11,6 +11,10 @@ import {
   type AudioParamLike,
   type BufferSourceLike,
   type GainNodeLike,
+  type OscillatorLike,
+  TEST_TONE_HZ,
+  TEST_TONE_LEVEL,
+  TEST_TONE_SECONDS,
 } from './engine'
 
 // A fake Web Audio context that records what the engine schedules.
@@ -75,6 +79,25 @@ class FakeSource extends FakeNode implements BufferSourceLike {
   }
 }
 
+class FakeOscillator extends FakeNode implements OscillatorLike {
+  type = 'square'
+  frequency = new FakeParam()
+  onended: (() => void) | null = null
+  startedAt: number | null = null
+  stoppedAt: number | null = null
+  output: FakeGain | null = null
+  start(when = 0) {
+    this.startedAt = when
+  }
+  stop(when = 0) {
+    this.stoppedAt = when
+  }
+  connect(destination: AudioNodeLike) {
+    if (destination instanceof FakeGain) this.output = destination
+    return super.connect(destination)
+  }
+}
+
 class FakeContext implements AudioContextLike {
   currentTime = 10
   state = 'running'
@@ -93,6 +116,12 @@ class FakeContext implements AudioContextLike {
     const s = new FakeSource()
     this.sources.push(s)
     return s
+  }
+  oscillators: FakeOscillator[] = []
+  createOscillator() {
+    const o = new FakeOscillator()
+    this.oscillators.push(o)
+    return o
   }
   async decodeAudioData(data: ArrayBuffer): Promise<AudioBufferLike> {
     this.decodes++
@@ -135,6 +164,10 @@ function liveSources(ctx: FakeContext) {
 
 beforeEach(() => {
   localStorage.clear()
+})
+
+afterEach(() => {
+  vi.restoreAllMocks()
 })
 
 test('music fades in over the fade time', async () => {
@@ -387,4 +420,73 @@ test('listeners hear about changes and the snapshot is stable between them', asy
   expect(listener).toHaveBeenCalled()
   expect(engine.getSnapshot()).not.toBe(before)
   off()
+})
+
+test('the test tone is a short sine beep through the master volume', async () => {
+  localStorage.setItem('planonme.masterVolume', '0.5')
+  const { ctx, engine } = setup([])
+  expect(await engine.playTestTone()).toBe(true)
+  const osc = ctx.oscillators[0]
+  expect(osc?.type).toBe('sine')
+  expect(osc?.frequency.events[0]).toEqual(['set', TEST_TONE_HZ, 10])
+  expect(osc?.startedAt).toBe(10)
+  expect(osc?.stoppedAt).toBe(10 + TEST_TONE_SECONDS)
+  // It fades in and out, and goes through the master gain, which holds the master volume.
+  const toneGain = osc?.output
+  expect(toneGain?.gain.events[0]).toEqual(['set', 0, 10])
+  expect(toneGain?.gain.events[1]).toEqual(['ramp', TEST_TONE_LEVEL, 10.02])
+  expect(toneGain?.gain.lastRamp()).toEqual([0, 10 + TEST_TONE_SECONDS])
+  const master = ctx.gains[0]
+  expect(master?.gain.value).toBe(0.5)
+  expect(toneGain?.connected).toEqual([master])
+  expect(engine.getSnapshot().testTone).toBe(true)
+
+  osc?.onended?.()
+  expect(engine.getSnapshot().testTone).toBe(false)
+  expect(osc?.connected).toEqual([])
+})
+
+test('a second test tone replaces the first, and stop all ends it', async () => {
+  const { ctx, engine } = setup([])
+  await engine.playTestTone()
+  await engine.playTestTone()
+  expect(ctx.oscillators).toHaveLength(2)
+  expect(ctx.oscillators[0]?.connected).toEqual([])
+  expect(engine.getSnapshot().testTone).toBe(true)
+  engine.stopAll()
+  expect(engine.getSnapshot().testTone).toBe(false)
+})
+
+test('the test tone reports a problem instead of throwing', async () => {
+  const none = new AudioEngine(() => null)
+  expect(await none.playTestTone()).toBe(false)
+  expect(none.getSnapshot().error).toBe('This browser cannot play audio.')
+
+  const ctx = new FakeContext()
+  ctx.createOscillator = () => {
+    throw new Error('NotSupportedError')
+  }
+  const engine = new AudioEngine(() => ctx)
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  expect(await engine.playTestTone()).toBe(false)
+  expect(engine.getSnapshot().error).toBe('Could not play the test tone.')
+  expect(engine.getSnapshot().testTone).toBe(false)
+})
+
+test('checkSound decodes without playing and reports bad files', async () => {
+  vi.spyOn(console, 'error').mockImplementation(() => undefined)
+  const bad = sound('bad', { blob: new Blob(['bad data'], { type: 'audio/wav' }) })
+  const a = sound('a')
+  const { ctx, engine } = setup([a, bad])
+  expect(await engine.checkSound(a)).toBeNull()
+  expect(ctx.sources).toHaveLength(0)
+  expect(await engine.checkSound(bad)).toMatch(/could not be read as audio/)
+  expect(engine.getSnapshot().error).toBeNull()
+  // The checked sound is cached, so playing it does not decode again.
+  const decodes = ctx.decodes
+  await engine.play('a')
+  expect(ctx.decodes).toBe(decodes)
+
+  const none = new AudioEngine(() => null)
+  expect(await none.checkSound(a)).toBe('This browser cannot play audio.')
 })

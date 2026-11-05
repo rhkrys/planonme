@@ -6,6 +6,7 @@ import { WorkshopBar } from './components/WorkshopBar'
 import { workshopStore } from './store/workshopStore'
 import { VIEWS, type ViewId } from './views'
 import { PlanView } from './views/plan/PlanView'
+import { PreflightView } from './views/preflight/PreflightView'
 import { RunView } from './views/run/RunView'
 import { ScriptView } from './views/script/ScriptView'
 import { SlidesView } from './views/slides/SlidesView'
@@ -61,8 +62,10 @@ export default function App() {
           <SlidesView />
         ) : current.id === 'sounds' ? (
           <SoundsView />
+        ) : current.id === 'preflight' ? (
+          <PreflightView />
         ) : (
-          <RunView />
+          <RunView onOpenPreflight={() => setView('preflight')} />
         )}
       </main>
     </div>

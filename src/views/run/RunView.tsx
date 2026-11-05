@@ -51,7 +51,7 @@ function useNow(active: boolean): number {
   return active ? now : Date.now()
 }
 
-export function RunView() {
+export function RunView({ onOpenPreflight }: { onOpenPreflight?: () => void } = {}) {
   const status = useWorkshopStore((s) => s.status)
   const currentId = useWorkshopStore((s) => s.currentId)
   const blocks = useWorkshopStore((s) => s.current?.blocks)
@@ -79,6 +79,14 @@ export function RunView() {
   return (
     <section className="run-view">
       <h1>Run</h1>
+      {onOpenPreflight && (
+        <p className="run-preflight muted">
+          Going live in Zoom? Check everything first.{' '}
+          <button type="button" className="btn" onClick={onOpenPreflight}>
+            Open pre-flight checklist
+          </button>
+        </p>
+      )}
       {plan.blocks.length === 0 ? (
         <p className="muted">This workshop has no blocks yet. Add them in Plan.</p>
       ) : runWorkshop === currentId ? (
