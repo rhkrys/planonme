@@ -1,4 +1,5 @@
 import { act, render, screen } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
 import { createFakeBus, last } from '../test/fakeChannel'
 import type { SyncMessage } from '../sync/protocol'
 import { AudienceApp, CURSOR_IDLE_MS } from './AudienceApp'
@@ -164,4 +165,13 @@ test('only accepts slide images of a known type and size', () => {
   expect(checkSlideBlob(png())).toBeInstanceOf(Blob)
   expect(() => checkSlideBlob(new Blob(['x'], { type: 'text/html' }))).toThrow()
   expect(() => checkSlideBlob(new Blob([], { type: 'image/png' }))).toThrow()
+})
+
+test('a double click does not make the window full screen', async () => {
+  const request = vi.fn(() => Promise.resolve())
+  document.documentElement.requestFullscreen = request
+  setup()
+  await act(async () => {})
+  await userEvent.dblClick(screen.getByTestId('audience'))
+  expect(request).not.toHaveBeenCalled()
 })

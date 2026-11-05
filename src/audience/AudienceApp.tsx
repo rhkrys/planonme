@@ -25,15 +25,6 @@ async function decodeImage(url: string): Promise<void> {
   if (typeof img.decode === 'function') await img.decode()
 }
 
-function toggleFullscreen() {
-  try {
-    if (document.fullscreenElement) void document.exitFullscreen?.().catch(() => {})
-    else void document.documentElement.requestFullscreen?.().catch(() => {})
-  } catch {
-    // Fullscreen is optional.
-  }
-}
-
 /**
  * The audience window: only the current slide on black, with no controls. The control window
  * says what to show over the channel; slide images are read from the shared IndexedDB.
@@ -157,7 +148,6 @@ export function AudienceApp({
       className={idle ? 'audience idle' : 'audience'}
       data-testid="audience"
       data-mode={view.kind}
-      onDoubleClick={toggleFullscreen}
     >
       {!channel ? (
         <div className="audience-note">
