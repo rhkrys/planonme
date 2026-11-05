@@ -598,7 +598,11 @@ function DeckCard({
             autoFocus
             onChange={(e) => setName(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === 'Escape') onMode('idle')
+              if (e.key === 'Escape') {
+                // Only cancel here. Without this, Escape also stops all sound.
+                e.preventDefault()
+                onMode('idle')
+              }
             }}
           />
           <button type="submit" className="btn primary" disabled={busy || !name.trim()}>
@@ -614,6 +618,13 @@ function DeckCard({
           className="message error inline-form"
           role="group"
           aria-label={`Confirm delete deck ${deck.name}`}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              // Only cancel here. Without this, Escape also stops all sound.
+              e.preventDefault()
+              onMode('idle')
+            }
+          }}
         >
           <span>
             Delete "{deck.name}" and its {count === 1 ? 'slide' : `${count} slides`}? This cannot be

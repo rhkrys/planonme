@@ -542,7 +542,11 @@ function Pad({ sound, sounds, playing, loading, mode, busy, onMode, onSave, onDe
           role="group"
           aria-label={`Confirm delete sound ${sound.name}`}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') onMode('idle')
+            if (e.key === 'Escape') {
+              // Only cancel here. Without this, Escape also stops all sound.
+              e.preventDefault()
+              onMode('idle')
+            }
           }}
         >
           <span>Delete "{sound.name}"? This cannot be undone.</span>
@@ -634,6 +638,7 @@ function SoundForm({
 
   function onHotkeyKeyDown(e: KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') {
+      e.preventDefault()
       onCancel()
       return
     }
@@ -663,7 +668,11 @@ function SoundForm({
           aria-describedby={nameError ? `${id}-name-error` : undefined}
           onChange={(e) => setName(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === 'Escape') onCancel()
+            if (e.key === 'Escape') {
+              // Only cancel here. Without this, Escape also stops all sound.
+              e.preventDefault()
+              onCancel()
+            }
           }}
         />
         {nameError && (

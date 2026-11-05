@@ -371,7 +371,11 @@ function BlockList({ blocks, schedule }: { blocks: Block[]; schedule: Schedule }
                     role="group"
                     aria-label={`Confirm delete block ${name}`}
                     onKeyDown={(e) => {
-                      if (e.key === 'Escape') cancelDelete(b.id)
+                      if (e.key === 'Escape') {
+                        // Only cancel here. Without this, Escape also stops all sound.
+                        e.preventDefault()
+                        cancelDelete(b.id)
+                      }
                     }}
                   >
                     <span>Delete "{name}" with its notes and script?</span>
@@ -492,7 +496,11 @@ function BlockEditor({ block, onDone }: { block: Block; onDone: () => void }) {
         save()
       }}
       onKeyDown={(e) => {
-        if (e.key === 'Escape') onDone()
+        if (e.key === 'Escape') {
+          // Only cancel here. Without this, Escape also stops all sound.
+          e.preventDefault()
+          onDone()
+        }
       }}
     >
       <div className="field wide">

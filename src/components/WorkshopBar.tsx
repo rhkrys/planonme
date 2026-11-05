@@ -98,7 +98,11 @@ export function WorkshopBar() {
               placeholder="Workshop name"
               onChange={(e) => setName(e.target.value)}
               onKeyDown={(e) => {
-                if (e.key === 'Escape') setMode({ kind: 'idle' })
+                if (e.key === 'Escape') {
+                  // Only cancel here. Without this, Escape also stops all sound.
+                  e.preventDefault()
+                  setMode({ kind: 'idle' })
+                }
               }}
             />
             <button type="submit" className="btn primary" disabled={!ready || !name.trim()}>
@@ -114,7 +118,11 @@ export function WorkshopBar() {
             role="group"
             aria-label="Confirm delete"
             onKeyDown={(e) => {
-              if (e.key === 'Escape') setMode({ kind: 'idle' })
+              if (e.key === 'Escape') {
+                // Only cancel here. Without this, Escape also stops all sound.
+                e.preventDefault()
+                setMode({ kind: 'idle' })
+              }
             }}
           >
             <span>

@@ -216,7 +216,12 @@ test('deleting a sound asks first', async () => {
   const del = vi.fn(async () => true)
   workshopStore.setState({ deleteSound: del })
   showSounds([sound('1', 'Gong'), sound('2', 'Bell')])
-  render(<SoundsView />)
+  render(
+    <>
+      <SoundsView />
+      <Keys />
+    </>,
+  )
   await userEvent.click(screen.getByRole('button', { name: 'Delete Gong' }))
   const confirm = screen.getByRole('group', { name: 'Confirm delete sound Gong' })
   await userEvent.click(within(confirm).getByRole('button', { name: 'Cancel' }))
@@ -224,6 +229,8 @@ test('deleting a sound asks first', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Delete Gong' }))
   await userEvent.keyboard('{Escape}')
   expect(screen.queryByRole('group', { name: 'Confirm delete sound Gong' })).toBeNull()
+  // Escape here only cancels the question. Playing sounds keep playing.
+  expect(audioEngine.stopAll).not.toHaveBeenCalled()
   await userEvent.click(screen.getByRole('button', { name: 'Delete Gong' }))
   await userEvent.click(screen.getByRole('button', { name: 'Delete sound' }))
   expect(del).toHaveBeenCalledWith('1')
