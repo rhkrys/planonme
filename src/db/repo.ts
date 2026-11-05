@@ -1,8 +1,23 @@
+import { hotkeyFromKey, hotkeyProblem } from '../audio/hotkeys'
+import { soundKey } from '../cues/check'
 import type { PlanOnMeDB } from './db'
 import { newId } from './ids'
-import { LIMITS } from './limits'
-import { normalizeSlideDeck, normalizeSound, normalizeTitle, normalizeWorkshop } from './normalize'
-import type { SlideDeck, Sound, SoundKind, Workshop, WorkshopSummary } from './types'
+import { COLOR_PATTERN, LIMITS } from './limits'
+import {
+  isAudioType,
+  normalizeSlideDeck,
+  normalizeSound,
+  normalizeTitle,
+  normalizeWorkshop,
+} from './normalize'
+import {
+  SOUND_KINDS,
+  type SlideDeck,
+  type Sound,
+  type SoundKind,
+  type Workshop,
+  type WorkshopSummary,
+} from './types'
 
 const CURRENT_KEY = 'currentWorkshopId'
 
@@ -19,6 +34,22 @@ export class DeckNotFoundError extends Error {
   constructor() {
     super('This slide deck no longer exists. It may have been deleted in another tab.')
     this.name = 'DeckNotFoundError'
+  }
+}
+
+/** The sound is gone, for example because another tab deleted it. */
+export class SoundNotFoundError extends Error {
+  constructor() {
+    super('This sound no longer exists. It may have been deleted in another tab.')
+    this.name = 'SoundNotFoundError'
+  }
+}
+
+/** A sound setting cannot be used, such as a hotkey another sound has. The message says why. */
+export class SoundSettingsError extends Error {
+  constructor(message: string) {
+    super(message)
+    this.name = 'SoundSettingsError'
   }
 }
 
@@ -227,21 +258,166 @@ export async function moveSlideDeck(
   })
 }
 
-/** Adds a sound to a workshop. */
+const MB = 1024 * 1024
+
+/**
+ * A sound name that works inside a cue such as [SFX name]: square brackets become round ones,
+ * and runs of spaces become one space.
+ */
+export function cleanSoundName(name: string): string {
+  return normalizeTitle(
+    name.replace(/\[/g, '(').replace(/\]/g, ')').replace(/\s+/g, ' '),
+    'Untitled sound',
+  )
+}
+
+/** The name, or the name with a number added, so that no other sound has it. */
+function uniqueSoundName(name: string, others: readonly Sound[]): string {
+  const taken = new Set(others.map((s) => soundKey(s.name)))
+  if (!taken.has(soundKey(name))) return name
+  for (let i = 2; ; i++) {
+    const suffix = ` ${i}`
+    const candidate = name.slice(0, LIMITS.maxTitleLength - suffix.length) + suffix
+    if (!taken.has(soundKey(candidate))) return candidate
+  }
+}
+
+/** Sound settings that can change after upload. */
+export type SoundPatch = Partial<
+  Pick<Sound, 'name' | 'kind' | 'loop' | 'volume' | 'hotkey' | 'color'>
+>
+
+/** Checks and cleans sound settings. Throws SoundSettingsError with a readable message. */
+function cleanPatch(
+  patch: SoundPatch,
+  others: readonly Sound[],
+  selfId: string | null,
+): SoundPatch {
+  const out: SoundPatch = {}
+  if (patch.name !== undefined) out.name = cleanSoundName(patch.name)
+  if (patch.kind !== undefined) {
+    if (!SOUND_KINDS.includes(patch.kind)) throw new SoundSettingsError('Pick music or effect.')
+    out.kind = patch.kind
+  }
+  if (patch.loop !== undefined) out.loop = patch.loop === true
+  if (patch.volume !== undefined) {
+    if (typeof patch.volume !== 'number' || !Number.isFinite(patch.volume)) {
+      throw new SoundSettingsError('Volume must be a number.')
+    }
+    out.volume = Math.min(1, Math.max(0, patch.volume))
+  }
+  if (patch.color !== undefined) {
+    if (patch.color !== '' && !COLOR_PATTERN.test(patch.color)) {
+      throw new SoundSettingsError('Color must look like #ff8800.')
+    }
+    out.color = patch.color.toLowerCase()
+  }
+  if (patch.hotkey !== undefined) {
+    const problem = hotkeyProblem(patch.hotkey, others, selfId)
+    if (problem) throw new SoundSettingsError(problem)
+    out.hotkey = patch.hotkey === '' ? '' : hotkeyFromKey(patch.hotkey)
+  }
+  return out
+}
+
+/**
+ * Adds a sound to a workshop. The name gets a number added if another sound has it. Throws
+ * MediaLimitError when the file or the workshop is too big, and SoundSettingsError for a bad
+ * setting such as a hotkey that is taken.
+ */
 export async function addSound(
   db: PlanOnMeDB,
   workshopId: string,
   sound: Omit<Sound, 'id' | 'workshopId'>,
 ): Promise<Sound> {
-  const full: Sound = { ...sound, id: newId(), workshopId }
-  await db.transaction('rw', db.workshops, db.sounds, async () => {
+  if (!(sound.blob instanceof Blob)) throw new SoundSettingsError('The sound has no audio data.')
+  if (!isAudioType(sound.blob.type)) {
+    throw new SoundSettingsError('The file type must be an audio type such as audio/mpeg.')
+  }
+  if (sound.blob.size > LIMITS.maxSoundBytes) {
+    throw new MediaLimitError(
+      `A sound can be up to ${Math.round(LIMITS.maxSoundBytes / MB)} MB. This file is larger.`,
+    )
+  }
+  return db.transaction('rw', db.workshops, db.sounds, async () => {
     const w = await getWorkshop(db, workshopId)
-    if (!w) throw new Error('Workshop not found')
-    if (w.soundIds.length >= LIMITS.maxSounds) throw new Error('Too many sounds')
+    if (!w) throw new WorkshopNotFoundError()
+    if (w.soundIds.length >= LIMITS.maxSounds) {
+      throw new MediaLimitError(
+        `A workshop can have up to ${LIMITS.maxSounds} sounds. Delete one first.`,
+      )
+    }
+    const others = await listSounds(db, w)
+    if (others.length >= LIMITS.maxSounds) {
+      throw new MediaLimitError(
+        `A workshop can have up to ${LIMITS.maxSounds} sounds. Delete one first.`,
+      )
+    }
+    const used = others.reduce((sum, s) => sum + s.blob.size, 0)
+    if (used + sound.blob.size > LIMITS.maxSoundBytesTotal) {
+      throw new MediaLimitError(
+        `A workshop can hold up to ${Math.round(LIMITS.maxSoundBytesTotal / MB)} MB of sounds. Delete one first.`,
+      )
+    }
+    const clean = cleanPatch(sound, others, null)
+    const full: Sound = {
+      id: newId(),
+      workshopId,
+      name: uniqueSoundName(clean.name ?? 'Untitled sound', others),
+      kind: clean.kind ?? 'sfx',
+      blob: sound.blob,
+      loop: clean.loop ?? false,
+      volume: clean.volume ?? 1,
+      hotkey: clean.hotkey ?? '',
+      color: clean.color ?? '',
+    }
     await db.sounds.add(full)
     await saveWorkshop(db, { ...w, soundIds: [...w.soundIds, full.id] })
+    return full
   })
-  return full
+}
+
+/** Changes the settings of a sound in a workshop and returns the saved sound. */
+export async function updateSound(
+  db: PlanOnMeDB,
+  workshopId: string,
+  soundId: string,
+  patch: SoundPatch,
+): Promise<Sound> {
+  return db.transaction('rw', db.workshops, db.sounds, async () => {
+    const sound = normalizeSound(await db.sounds.get(soundId))
+    if (!sound || sound.workshopId !== workshopId) throw new SoundNotFoundError()
+    const w = await getWorkshop(db, workshopId)
+    if (!w) throw new WorkshopNotFoundError()
+    const others = (await listSounds(db, w)).filter((s) => s.id !== soundId)
+    const clean = cleanPatch(patch, others, soundId)
+    if (
+      clean.name !== undefined &&
+      others.some((s) => soundKey(s.name) === soundKey(clean.name ?? ''))
+    ) {
+      throw new SoundSettingsError(`Another sound is already called "${clean.name}".`)
+    }
+    const saved: Sound = { ...sound, ...clean }
+    await db.sounds.put(saved)
+    return saved
+  })
+}
+
+/** Deletes a sound and removes it from its workshop. */
+export async function deleteSound(
+  db: PlanOnMeDB,
+  workshopId: string,
+  soundId: string,
+): Promise<void> {
+  await db.transaction('rw', db.workshops, db.sounds, async () => {
+    const sound = normalizeSound(await db.sounds.get(soundId))
+    if (sound && sound.workshopId !== workshopId) throw new SoundNotFoundError()
+    await db.sounds.delete(soundId)
+    const w = await getWorkshop(db, workshopId)
+    if (w && w.soundIds.includes(soundId)) {
+      await saveWorkshop(db, { ...w, soundIds: w.soundIds.filter((id) => id !== soundId) })
+    }
+  })
 }
 
 export async function getCurrentWorkshopId(db: PlanOnMeDB): Promise<string | null> {

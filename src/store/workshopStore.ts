@@ -4,29 +4,38 @@ import { BackupError, exportWorkshop, importWorkshop, type ExportedFile } from '
 import { PlanOnMeDB } from '../db/db'
 import {
   addSlideDeck,
+  addSound,
   createWorkshop,
   DeckNotFoundError,
   deleteSlideDeck,
+  deleteSound,
   deleteWorkshop,
   getCurrentWorkshopId,
   getMediaSummary,
   getWorkshop,
   listSlideDecks,
+  listSounds,
   listWorkshops,
   MediaLimitError,
   moveSlideDeck,
   renameSlideDeck,
   renameWorkshop,
   setCurrentWorkshopId,
+  SoundNotFoundError,
+  SoundSettingsError,
+  updateSound,
   updateWorkshop,
   WorkshopNotFoundError,
   type MediaSummary,
+  type SoundPatch,
 } from '../db/repo'
-import type { SlideDeck, Workshop, WorkshopSummary } from '../db/types'
+import type { SlideDeck, Sound, Workshop, WorkshopSummary } from '../db/types'
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error'
 
 export type NewSlideDeck = Omit<SlideDeck, 'id' | 'workshopId'>
+
+export type NewSound = Omit<Sound, 'id' | 'workshopId'>
 
 export type WorkshopPatch = Partial<Pick<Workshop, 'title' | 'date' | 'durationMin' | 'blocks'>>
 
@@ -65,6 +74,13 @@ export interface WorkshopState {
   deleteSlideDeck: (deckId: string) => Promise<boolean>
   /** Moves a deck of the current workshop up (-1) or down (+1). */
   moveSlideDeck: (deckId: string, delta: number) => Promise<boolean>
+  /** The current workshop's sounds with their audio, or null if they could not be read. */
+  loadSounds: () => Promise<Sound[] | null>
+  /** Adds a sound to a workshop (which may no longer be the current one). Null on failure. */
+  addSound: (workshopId: string, sound: NewSound) => Promise<Sound | null>
+  /** Changes settings of a sound in the current workshop. True on success. */
+  updateSound: (soundId: string, patch: SoundPatch) => Promise<boolean>
+  deleteSound: (soundId: string) => Promise<boolean>
 }
 
 export const FIRST_WORKSHOP_TITLE = 'My workshop'
@@ -74,6 +90,8 @@ function describe(err: unknown, fallback: string): string {
     err instanceof BackupError ||
     err instanceof WorkshopNotFoundError ||
     err instanceof DeckNotFoundError ||
+    err instanceof SoundNotFoundError ||
+    err instanceof SoundSettingsError ||
     err instanceof MediaLimitError
   ) {
     return err.message
@@ -113,17 +131,25 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
     }
 
     /**
-     * After a deck change, takes the stored deck order into the current workshop and reloads
-     * the media summary. Other fields of current are left alone, so unsaved edits stay.
+     * After a deck or sound change, takes the stored deck and sound order into the current
+     * workshop and reloads the media summary. Other fields of current are left alone, so unsaved
+     * edits stay.
      */
-    async function syncDecks(workshopId: string): Promise<void> {
+    async function syncMedia(workshopId: string): Promise<void> {
       if (get().current?.id !== workshopId) return
       const stored = await getWorkshop(getDb(), workshopId)
       if (!stored) throw new WorkshopNotFoundError()
       const media = await loadMedia(stored)
       set((s) =>
         s.current?.id === workshopId
-          ? { current: { ...s.current, slideDeckIds: stored.slideDeckIds }, media }
+          ? {
+              current: {
+                ...s.current,
+                slideDeckIds: stored.slideDeckIds,
+                soundIds: stored.soundIds,
+              },
+              media,
+            }
           : {},
       )
     }
@@ -284,7 +310,7 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
       addSlideDeck: async (workshopId, deck) => {
         return run(async () => {
           const added = await addSlideDeck(getDb(), workshopId, deck)
-          await syncDecks(workshopId)
+          await syncMedia(workshopId)
           set({
             error: null,
             notice: `Added "${added.name}" with ${plural(added.slides.length, 'slide')}.`,
@@ -296,7 +322,7 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
         return run(async () => {
           await renameSlideDeck(getDb(), deckId, name)
           const id = get().currentId
-          if (id) await syncDecks(id)
+          if (id) await syncMedia(id)
           set({ error: null, notice: null })
         }, 'Could not rename the slide deck.')
       },
@@ -306,7 +332,7 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
           const id = get().currentId
           if (!id) return
           await deleteSlideDeck(getDb(), id, deckId)
-          await syncDecks(id)
+          await syncMedia(id)
           set({ error: null, notice: null })
         }, 'Could not delete the slide deck.')
       },
@@ -316,9 +342,54 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
           const id = get().currentId
           if (!id) return
           await moveSlideDeck(getDb(), id, deckId, delta)
-          await syncDecks(id)
+          await syncMedia(id)
           set({ error: null, notice: null })
         }, 'Could not move the slide deck.')
+      },
+
+      loadSounds: async () => {
+        let sounds: Sound[] | null = null
+        await run(async () => {
+          const id = get().currentId
+          if (!id) {
+            sounds = []
+            return
+          }
+          const stored = await getWorkshop(getDb(), id)
+          sounds = stored ? await listSounds(getDb(), stored) : []
+        }, 'Could not read the sounds.')
+        return sounds
+      },
+
+      addSound: async (workshopId, sound) => {
+        let added: Sound | null = null
+        await run(async () => {
+          const saved = await addSound(getDb(), workshopId, sound)
+          added = saved
+          await syncMedia(workshopId)
+          set({ error: null, notice: `Added "${saved.name}".` })
+        }, 'Could not save the sound.')
+        return added
+      },
+
+      updateSound: async (soundId, patch) => {
+        return run(async () => {
+          const id = get().currentId
+          if (!id) return
+          await updateSound(getDb(), id, soundId, patch)
+          await syncMedia(id)
+          set({ error: null, notice: null })
+        }, 'Could not save the sound.')
+      },
+
+      deleteSound: async (soundId) => {
+        return run(async () => {
+          const id = get().currentId
+          if (!id) return
+          await deleteSound(getDb(), id, soundId)
+          await syncMedia(id)
+          set({ error: null, notice: null })
+        }, 'Could not delete the sound.')
       },
     }
   })

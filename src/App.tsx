@@ -1,4 +1,6 @@
 import { useEffect, useState } from 'react'
+import { useSoundLibrarySync } from './audio/library'
+import { useSoundKeys } from './audio/useSoundKeys'
 import { AudienceBar, PopupBlockedHelp } from './components/AudienceBar'
 import { WorkshopBar } from './components/WorkshopBar'
 import { workshopStore } from './store/workshopStore'
@@ -7,6 +9,7 @@ import { Placeholder } from './views/Placeholder'
 import { PlanView } from './views/plan/PlanView'
 import { ScriptView } from './views/script/ScriptView'
 import { SlidesView } from './views/slides/SlidesView'
+import { SoundsView } from './views/sounds/SoundsView'
 
 export default function App() {
   const [view, setView] = useState<ViewId>('plan')
@@ -15,6 +18,10 @@ export default function App() {
   useEffect(() => {
     void workshopStore.getState().init()
   }, [])
+
+  // Sounds load with the workshop, and their hotkeys work on every view.
+  useSoundLibrarySync()
+  useSoundKeys()
 
   // Ask before closing or reloading the tab while an edit is still being written.
   useEffect(() => {
@@ -52,6 +59,8 @@ export default function App() {
           <ScriptView />
         ) : current.id === 'slides' ? (
           <SlidesView />
+        ) : current.id === 'sounds' ? (
+          <SoundsView />
         ) : (
           <Placeholder title={current.label} />
         )}

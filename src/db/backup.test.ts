@@ -381,7 +381,10 @@ test('export refuses media that import would reject, with a clear message', asyn
 
 test('export refuses a sound larger than import allows', async () => {
   const w = await createWorkshop(db, 'Big sound')
-  await addSound(db, w.id, {
+  // addSound refuses such a file, so write it straight to storage, as an older version might.
+  await db.sounds.add({
+    id: 'big-sound',
+    workshopId: w.id,
     name: 'Long',
     kind: 'music',
     blob: new Blob([new Uint8Array(LIMITS.maxSoundBytes + 1)], { type: 'audio/wav' }),
@@ -390,6 +393,7 @@ test('export refuses a sound larger than import allows', async () => {
     hotkey: '',
     color: '',
   })
+  await saveWorkshop(db, { ...w, soundIds: ['big-sound'] })
   const err = await exportWorkshop(db, w.id).catch((e: unknown) => e)
   expect(err).toBeInstanceOf(BackupError)
   expect((err as Error).message).toMatch(/Sound 1 is larger than 100 MB/)

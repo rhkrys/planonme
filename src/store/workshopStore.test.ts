@@ -265,3 +265,38 @@ test('adding a deck to a workshop that is no longer current leaves the current o
   await store.getState().selectWorkshop(first)
   expect(store.getState().media?.decks.map((d) => d.name)).toEqual(['A'])
 })
+
+test('sound actions keep current, media and the sound list in step', async () => {
+  const store = makeStore()
+  await store.getState().init()
+  const id = store.getState().currentId
+  if (!id) throw new Error('no workshop')
+  // An unsaved edit must survive sound changes.
+  void store.getState().updateCurrent({ title: 'Edited' })
+
+  const wav = () => new Blob([makeWav()], { type: 'audio/wav' })
+  const base = { kind: 'sfx' as const, loop: false, volume: 1, hotkey: '', color: '' }
+  const a = await store.getState().addSound(id, { ...base, name: 'Applause', blob: wav() })
+  expect(a?.name).toBe('Applause')
+  expect(store.getState().notice).toBe('Added "Applause".')
+  const b = await store.getState().addSound(id, { ...base, name: 'Gong', blob: wav() })
+  if (!a || !b) throw new Error('not added')
+  expect(store.getState().current?.soundIds).toEqual([a.id, b.id])
+  expect(store.getState().current?.title).toBe('Edited')
+  expect(store.getState().media?.sounds.map((s) => s.name)).toEqual(['Applause', 'Gong'])
+
+  expect(await store.getState().updateSound(b.id, { name: 'Bell', kind: 'music' })).toBe(true)
+  expect(store.getState().media?.sounds[1]).toEqual({ id: b.id, name: 'Bell', kind: 'music' })
+  expect((await store.getState().loadSounds())?.map((s) => s.name)).toEqual(['Applause', 'Bell'])
+
+  expect(await store.getState().updateSound(b.id, { hotkey: 'b' })).toBe(false)
+  expect(store.getState().error).toBe('B is kept for the blank screen.')
+
+  expect(await store.getState().deleteSound(a.id)).toBe(true)
+  expect(store.getState().current?.soundIds).toEqual([b.id])
+  expect(store.getState().media?.sounds.map((s) => s.name)).toEqual(['Bell'])
+  expect(store.getState().error).toBeNull()
+
+  expect(await store.getState().addSound('missing', { ...base, name: 'X', blob: wav() })).toBeNull()
+  expect(store.getState().error).toMatch(/no longer exists/)
+})

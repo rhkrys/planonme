@@ -1197,3 +1197,270 @@ input.minutes {
     animation: none;
   }
 }
+
+/* Sounds */
+
+.sounds-view {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 1100px;
+}
+
+.sounds-view h1 {
+  margin: 0;
+}
+
+.sounds-view h2 {
+  font-size: 1rem;
+  margin: 0 0 8px;
+}
+
+.player-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.master {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.master label {
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.master input[type='range'],
+.volume-row input[type='range'] {
+  accent-color: var(--accent);
+  width: 10rem;
+  max-width: 100%;
+}
+
+.master-value {
+  min-width: 3ch;
+  font-variant-numeric: tabular-nums;
+}
+
+.playing-count {
+  flex: 1;
+  font-size: 0.875rem;
+}
+
+.btn.stop-all {
+  font-weight: 600;
+}
+
+.player-error {
+  flex-basis: 100%;
+}
+
+.sound-upload {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px 16px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.sound-upload h2 {
+  margin: 0;
+}
+
+.sound-upload .field {
+  align-self: flex-start;
+}
+
+.pads-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pads-section h2 {
+  margin: 0;
+}
+
+.upload-errors {
+  margin: 0;
+  padding-left: 1.2em;
+}
+
+.pads {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+}
+
+.pad-card {
+  --pad-color: var(--accent);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pad-card.kind-sfx {
+  --pad-color: #12a594;
+}
+
+.pad-card.open {
+  grid-column: 1 / -1;
+}
+
+.pad {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  flex: 1;
+  min-height: 104px;
+  padding: 12px 12px 18px;
+  border: 2px solid var(--pad-color);
+  border-radius: var(--radius);
+  background: color-mix(in srgb, var(--pad-color) 14%, var(--panel));
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.pad-card.open .pad {
+  flex: none;
+  max-width: 260px;
+}
+
+.pad:hover {
+  background: color-mix(in srgb, var(--pad-color) 24%, var(--panel));
+}
+
+.pad:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+}
+
+.pad:active {
+  transform: translateY(1px);
+}
+
+.pad-card.playing .pad {
+  background: color-mix(in srgb, var(--pad-color) 38%, var(--panel));
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pad-color) 45%, transparent);
+}
+
+.pad-name {
+  font-weight: 600;
+  padding-right: 2.2rem;
+}
+
+.pad-meta,
+.pad-time {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.pad-time {
+  font-variant-numeric: tabular-nums;
+}
+
+.pad-key {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-width: 1.8rem;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  font-family: inherit;
+  font-weight: 600;
+  text-align: center;
+}
+
+.pad-state {
+  font-size: 0.8rem;
+  font-weight: 600;
+  min-height: 1em;
+}
+
+.pad-progress {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 6px;
+  background: color-mix(in srgb, var(--pad-color) 20%, transparent);
+}
+
+.pad-progress-fill {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--pad-color);
+}
+
+.pad-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.pad-actions .btn {
+  padding: 4px 10px;
+  font-size: 0.875rem;
+}
+
+.sound-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 12px 16px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+}
+
+.sound-form .inline-form {
+  flex-basis: 100%;
+}
+
+.hotkey-input {
+  width: 6rem;
+  text-align: center;
+  font-weight: 600;
+}
+
+.volume-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 2.2rem;
+}
+
+.check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: center;
+  margin-top: 1.2rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pad:active {
+    transform: none;
+  }
+}

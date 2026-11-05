@@ -8,6 +8,8 @@ export const LIMITS = {
   maxMediaBytes: 500 * MB,
   maxSlideBytes: 20 * MB,
   maxSoundBytes: 100 * MB,
+  /** All sounds of one workshop together, so the workshop still fits in a backup file. */
+  maxSoundBytesTotal: 300 * MB,
   maxBlocks: 500,
   maxDecks: 50,
   maxSlidesPerDeck: 500,
