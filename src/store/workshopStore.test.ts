@@ -2,6 +2,7 @@
 import { BACKUP_FORMAT } from '../db/backup'
 import { PlanOnMeDB } from '../db/db'
 import { addSlideDeck, addSound } from '../db/repo'
+import { buildSampleWorkshop, SAMPLE_TITLE, type SampleWorkshop } from '../sample/sampleWorkshop'
 import { fakePngBytes, makeWav } from '../test/media'
 import { createWorkshopStore, FIRST_WORKSHOP_TITLE } from './workshopStore'
 
@@ -299,4 +300,60 @@ test('sound actions keep current, media and the sound list in step', async () =>
 
   expect(await store.getState().addSound('missing', { ...base, name: 'X', blob: wav() })).toBeNull()
   expect(store.getState().error).toMatch(/no longer exists/)
+})
+
+describe('sample workshop', () => {
+  async function sample(overrides: Partial<SampleWorkshop> = {}): Promise<SampleWorkshop> {
+    const built = await buildSampleWorkshop(
+      async () => new Blob([fakePngBytes()], { type: 'image/png' }),
+    )
+    return { ...built, ...overrides }
+  }
+
+  test('creates and opens a workshop with blocks, slides and sounds', async () => {
+    const store = makeStore()
+    await store.getState().init()
+    expect(await store.getState().createSampleWorkshop(() => sample())).toBe(true)
+    const s = store.getState()
+    expect(s.current?.title).toBe(SAMPLE_TITLE)
+    expect(s.current?.blocks.map((b) => b.title)).toEqual([
+      'Welcome',
+      'Warm-up',
+      'Break',
+      'Wrap-up',
+    ])
+    expect(s.current?.durationMin).toBe(30)
+    expect(s.media?.decks.map((d) => d.slideCount)).toEqual([5])
+    expect(s.media?.sounds.map((x) => x.name)).toEqual(['Chime', 'Ding', 'Break music'])
+    expect(s.notice).toContain(`Added "${SAMPLE_TITLE}".`)
+    expect(s.workshops).toHaveLength(2)
+  })
+
+  test('leaves nothing behind when a step fails', async () => {
+    const store = makeStore()
+    await store.getState().init()
+    const good = await sample()
+    const first = good.sounds[0]
+    if (!first) throw new Error('The sample has no sounds')
+    const bad = await sample({
+      sounds: [...good.sounds, { ...first, blob: new Blob(['x'], { type: 'text/plain' }) }],
+    })
+    expect(await store.getState().createSampleWorkshop(async () => bad)).toBe(false)
+    const s = store.getState()
+    expect(s.error).toBe('The file type must be an audio type such as audio/mpeg.')
+    expect(s.workshops.map((w) => w.title)).toEqual([FIRST_WORKSHOP_TITLE])
+    expect(await db.slideDecks.count()).toBe(0)
+    expect(await db.sounds.count()).toBe(0)
+  })
+
+  test('a build that throws shows a readable error', async () => {
+    const store = makeStore()
+    await store.getState().init()
+    const ok = await store.getState().createSampleWorkshop(async () => {
+      throw new Error('No 2D canvas')
+    })
+    expect(ok).toBe(false)
+    expect(store.getState().error).toBe('Could not add the sample workshop.')
+    expect(store.getState().workshops).toHaveLength(1)
+  })
 })

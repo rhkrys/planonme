@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react'
+import { NoWorkshop } from '../../components/EmptyState'
 import { audioEngine } from '../../audio/engine'
 import { useSoundLibrary } from '../../audio/library'
 import {
@@ -88,7 +89,7 @@ export function PreflightView() {
         <h1 id={PREFLIGHT_TITLE_ID} tabIndex={-1}>
           Pre-flight
         </h1>
-        <p className="muted">{status === 'error' ? 'No workshop is open.' : 'Loading...'}</p>
+        <NoWorkshop status={status} />
       </section>
     )
   }

@@ -10,6 +10,7 @@ import {
   type ChangeEvent,
   type KeyboardEvent,
 } from 'react'
+import { LoadSampleButton, NoWorkshop } from '../../components/EmptyState'
 import { checkScript, linesOf, type CueContext, type CueProblem } from '../../cues/check'
 import {
   applyOption,
@@ -73,24 +74,19 @@ export function ScriptView() {
   const [dirty, setDirty] = useState(false)
 
   let body
-  if (status === 'idle' || status === 'loading') {
-    body = <p className="muted">Loading...</p>
-  } else if (status === 'error') {
-    body = (
-      <p className="muted">The script can not be shown because saved workshops did not open.</p>
-    )
-  } else if (!current) {
-    body = (
-      <div className="empty">
-        <p>No workshop yet.</p>
-        <p className="muted">Use New at the top to create one.</p>
-      </div>
-    )
+  if (status !== 'ready' || !current) {
+    body = <NoWorkshop status={status} />
   } else if (current.blocks.length === 0) {
     body = (
       <div className="empty">
         <p>No blocks yet.</p>
-        <p className="muted">Add blocks in Plan first. Each block gets its own script.</p>
+        <p className="muted">
+          Add blocks in Plan first. Each block gets its own script, with cues such as [SLIDE 2] or
+          [SFX applause].
+        </p>
+        <div className="empty-actions">
+          <LoadSampleButton />
+        </div>
       </div>
     )
   } else {

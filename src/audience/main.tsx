@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import '../styles.css'
+import { ErrorBoundary } from '../components/ErrorBoundary'
 import { openBroadcastChannel } from '../sync/protocol'
 import { AudienceApp } from './AudienceApp'
 import { createSlideSource } from './slideSource'
@@ -12,7 +13,9 @@ const root = document.getElementById('root')
 if (root) {
   createRoot(root).render(
     <StrictMode>
-      <AudienceApp channel={channel} loadSlide={loadSlide} />
+      <ErrorBoundary area="The audience window">
+        <AudienceApp channel={channel} loadSlide={loadSlide} />
+      </ErrorBoundary>
     </StrictMode>,
   )
 }

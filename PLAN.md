@@ -36,29 +36,30 @@ Sound     { id, name, kind (music | sfx), blob, loop, volume, hotkey, color }
 
 ## MVP build steps
 
-Each step is one small commit with passing gates.
+Each step is one small commit with passing gates. Status: all ten steps are done, and the MVP is
+ready to use.
 
-1. **Scaffold.** Vite, React, TS, ESLint, Prettier, Vitest, Playwright, app shell with a sidebar
+1. **Scaffold (done).** Vite, React, TS, ESLint, Prettier, Vitest, Playwright, app shell with a sidebar
    (Plan, Script, Slides, Sounds, Run).
-2. **Storage layer.** Dexie schema for workshops, decks and sounds. Export and import a workshop as
+2. **Storage layer (done).** Dexie schema for workshops, decks and sounds. Export and import a workshop as
    one `.planonme` file (JSON plus media) for backup.
-3. **Planner.** Create workshops. Add, edit and drag-reorder blocks. Running total against session
+3. **Planner (done).** Create workshops. Add, edit and drag-reorder blocks. Running total against session
    length, with an over-time warning.
-4. **Script editor.** A script per block. Cue tokens are highlighted and checked (unknown slide or
+4. **Script editor (done).** A script per block. Cue tokens are highlighted and checked (unknown slide or
    sound shows a warning). Typing `[` gives an autocomplete list of slides and sounds.
-5. **Slide import.** Upload a PDF, render pages to images, show a thumbnail strip. Help text on how
+5. **Slide import (done).** Upload a PDF, render pages to images, show a thumbnail strip. Help text on how
    to export a PDF from PowerPoint, Google Slides, Canva and Gamma.
-6. **Audience window.** "Open audience window" opens a 1280x720 popup that shows only the current
+6. **Audience window (done).** "Open audience window" opens a 1280x720 popup that shows only the current
    slide on black, scaled to fit any size. It is controlled over `BroadcastChannel` and
    reconnects if reloaded. Blank-screen and logo-screen toggles.
-7. **Soundboard.** Upload audio files. A grid of pads with color, hotkey, loop and volume. Music
+7. **Soundboard (done).** Upload audio files. A grid of pads with color, hotkey, loop and volume. Music
    fades in and out; effects can overlap. A panic button stops all audio.
-8. **Run mode.** A teleprompter view of the script, with the current cue highlighted. The space bar
+8. **Run mode (done).** A teleprompter view of the script, with the current cue highlighted. The space bar
    (GO) fires the next cue. Arrow keys move slides. Block countdown, total elapsed, and an
    ahead/behind indicator. A "next up" preview of the next slide and cue.
-9. **Zoom pre-flight.** A checklist screen: audience window open, test tone, reminder to tick
+9. **Zoom pre-flight (done).** A checklist screen: audience window open, test tone, reminder to tick
    "Share sound" in Zoom, and how to share only the audience window.
-10. **Polish and ship.** Keyboard shortcut help, empty states, error messages, PWA install, deploy
+10. **Polish and ship (done).** Keyboard shortcut help, empty states, error messages, PWA install, deploy
     guide. End-to-end test of a full sample workshop.
 
 ## v2 plan

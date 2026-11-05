@@ -1,4 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
+import { LoadSampleButton, NoWorkshop } from '../../components/EmptyState'
 import { audioEngine } from '../../audio/engine'
 import { AudiencePanel, AudiencePreview } from '../../components/AudiencePanel'
 import { describeCue } from '../../cues/describe'
@@ -71,7 +72,7 @@ export function RunView({ onOpenPreflight }: { onOpenPreflight?: () => void } = 
     return (
       <section className="run-view">
         <h1>Run</h1>
-        <p className="muted">{status === 'error' ? 'No workshop is open.' : 'Loading...'}</p>
+        <NoWorkshop status={status} />
       </section>
     )
   }
@@ -88,7 +89,16 @@ export function RunView({ onOpenPreflight }: { onOpenPreflight?: () => void } = 
         </p>
       )}
       {plan.blocks.length === 0 ? (
-        <p className="muted">This workshop has no blocks yet. Add them in Plan.</p>
+        <div className="empty">
+          <p>Nothing to run yet.</p>
+          <p className="muted">
+            This workshop has no blocks. Add them in Plan, or load the sample workshop to try Run
+            mode.
+          </p>
+          <div className="empty-actions">
+            <LoadSampleButton />
+          </div>
+        </div>
       ) : runWorkshop === currentId ? (
         <Runner plan={plan} media={media} />
       ) : (

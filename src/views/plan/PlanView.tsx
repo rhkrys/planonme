@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { LoadSampleButton, NoWorkshop } from '../../components/EmptyState'
 import { newId } from '../../db/ids'
 import { DATE_PATTERN, LIMITS } from '../../db/limits'
 import { BLOCK_KINDS, type Block, type BlockKind, type Workshop } from '../../db/types'
@@ -58,17 +59,8 @@ export function PlanView() {
   const saving = useWorkshopStore((s) => s.pendingSaves > 0)
 
   let body
-  if (status === 'idle' || status === 'loading') {
-    body = <p className="muted">Loading...</p>
-  } else if (status === 'error') {
-    body = <p className="muted">The plan can not be shown because saved workshops did not open.</p>
-  } else if (!current) {
-    body = (
-      <div className="empty">
-        <p>No workshop yet.</p>
-        <p className="muted">Use New at the top to create one.</p>
-      </div>
-    )
+  if (status !== 'ready' || !current) {
+    body = <NoWorkshop status={status} />
   } else {
     // A new key per workshop resets edit forms and drafts when the workshop changes.
     body = <Planner key={current.id} workshop={current} />
@@ -298,8 +290,12 @@ function BlockList({ blocks, schedule }: { blocks: Block[]; schedule: Schedule }
       <div className="empty">
         <p>No blocks yet.</p>
         <p className="muted">
-          Add the first block below: a talk, an exercise, a break or a discussion.
+          Add the first block below: a talk, an exercise, a break or a discussion. New here? Load a
+          sample workshop with slides, sounds and a script to see how it all fits together.
         </p>
+        <div className="empty-actions">
+          <LoadSampleButton />
+        </div>
       </div>
     )
   }

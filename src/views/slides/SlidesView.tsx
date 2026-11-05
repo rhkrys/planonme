@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent, type FormEvent, type RefObject } from 'react'
+import { NoWorkshop } from '../../components/EmptyState'
 import { AudiencePanel } from '../../components/AudiencePanel'
 import { LIMITS } from '../../db/limits'
 import { DECK_SOURCES, type DeckSource, type SlideDeck } from '../../db/types'
@@ -54,7 +55,7 @@ export function SlidesView() {
     return (
       <section className="slides-view">
         <h1>Slides</h1>
-        <p className="muted">{status === 'error' ? 'No workshop is open.' : 'Loading...'}</p>
+        <NoWorkshop status={status} />
       </section>
     )
   }
@@ -409,7 +410,11 @@ function DeckList({ decks }: { decks: SlideDeck[] }) {
   if (decks.length === 0) {
     return (
       <div className="empty">
-        <p>No slides yet. Import a PDF to add your first deck.</p>
+        <p>No slides yet.</p>
+        <p className="muted">
+          Import a PDF above to add your first deck. Export it from PowerPoint, Google Slides, Canva
+          or Gamma.
+        </p>
       </div>
     )
   }

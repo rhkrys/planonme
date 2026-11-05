@@ -118,7 +118,7 @@ export function WorkshopBar() {
             }}
           >
             <span>
-              Delete "{current.title}" with all its slides and sounds? This can not be undone.
+              Delete "{current.title}" with all its slides and sounds? This cannot be undone.
             </span>
             <button type="button" className="btn danger" disabled={!ready} onClick={confirmDelete}>
               Yes, delete

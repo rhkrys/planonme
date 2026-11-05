@@ -2,6 +2,9 @@ import { useEffect, useState } from 'react'
 import { useSoundLibrarySync } from './audio/library'
 import { useSoundKeys } from './audio/useSoundKeys'
 import { AudienceBar, PopupBlockedHelp } from './components/AudienceBar'
+import { ErrorBoundary } from './components/ErrorBoundary'
+import { ShortcutHelp } from './components/ShortcutHelp'
+import { useAppKeys } from './components/useAppKeys'
 import { WorkshopBar } from './components/WorkshopBar'
 import { workshopStore } from './store/workshopStore'
 import { PREFLIGHT_TITLE_ID, VIEWS, type ViewId } from './views'
@@ -14,7 +17,10 @@ import { SoundsView } from './views/sounds/SoundsView'
 
 export default function App() {
   const [view, setView] = useState<ViewId>('plan')
+  const [helpOpen, setHelpOpen] = useState(false)
   const current = VIEWS.find((v) => v.id === view) ?? VIEWS[0]
+
+  useAppKeys({ onView: setView, onHelp: () => setHelpOpen((open) => !open), paused: helpOpen })
 
   useEffect(() => {
     void workshopStore.getState().init()
@@ -49,6 +55,7 @@ export default function App() {
               key={v.id}
               className={v.id === view ? 'nav-item active' : 'nav-item'}
               aria-current={v.id === view ? 'page' : undefined}
+              aria-keyshortcuts={v.hotkey}
               onClick={() => setView(v.id)}
             >
               {v.label}
@@ -56,24 +63,37 @@ export default function App() {
           ))}
         </nav>
         <AudienceBar />
+        <button
+          type="button"
+          className="btn help-button"
+          aria-haspopup="dialog"
+          aria-keyshortcuts="?"
+          onClick={() => setHelpOpen(true)}
+        >
+          Keyboard shortcuts <kbd aria-hidden="true">?</kbd>
+        </button>
       </aside>
       <main className="content">
         <PopupBlockedHelp />
         <WorkshopBar />
-        {current.id === 'plan' ? (
-          <PlanView />
-        ) : current.id === 'script' ? (
-          <ScriptView />
-        ) : current.id === 'slides' ? (
-          <SlidesView />
-        ) : current.id === 'sounds' ? (
-          <SoundsView />
-        ) : current.id === 'preflight' ? (
-          <PreflightView />
-        ) : (
-          <RunView onOpenPreflight={openPreflight} />
-        )}
+        {/* A new key per view, so opening another view also recovers from a crash. */}
+        <ErrorBoundary key={current.id} area={`The ${current.label} view`}>
+          {current.id === 'plan' ? (
+            <PlanView />
+          ) : current.id === 'script' ? (
+            <ScriptView />
+          ) : current.id === 'slides' ? (
+            <SlidesView />
+          ) : current.id === 'sounds' ? (
+            <SoundsView />
+          ) : current.id === 'preflight' ? (
+            <PreflightView />
+          ) : (
+            <RunView onOpenPreflight={openPreflight} />
+          )}
+        </ErrorBoundary>
       </main>
+      {helpOpen && <ShortcutHelp onClose={() => setHelpOpen(false)} />}
     </div>
   )
 }

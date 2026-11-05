@@ -9,6 +9,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from 'react'
+import { NoWorkshop } from '../../components/EmptyState'
 import { audioEngine, DecodeError, type PlayingInfo } from '../../audio/engine'
 import {
   AUDIO_ACCEPT,
@@ -67,7 +68,7 @@ export function SoundsView() {
     return (
       <section className="sounds-view">
         <h1>Sounds</h1>
-        <p className="muted">{status === 'error' ? 'No workshop is open.' : 'Loading...'}</p>
+        <NoWorkshop status={status} />
       </section>
     )
   }
@@ -384,7 +385,11 @@ function PadGrid({ sounds }: { sounds: Sound[] }) {
   if (sounds.length === 0) {
     return (
       <div className="empty">
-        <p>No sounds yet. Add music or sound effects to make pads.</p>
+        <p>No sounds yet.</p>
+        <p className="muted">
+          Upload music or sound effects above. Each one becomes a pad you can click, or play from a
+          cue such as [SFX applause].
+        </p>
       </div>
     )
   }

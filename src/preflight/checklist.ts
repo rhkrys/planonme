@@ -102,7 +102,8 @@ export function audienceCheck(connected: boolean): CheckResult {
 }
 
 export function slidesCheck(media: MediaInfo | null): CheckResult {
-  if (!media) return { status: 'fail', message: 'Could not read the slides. Reload the page.' }
+  if (!media)
+    return { status: 'fail', message: 'Could not read the slides. Reload the page to try again.' }
   const slides = media.decks.reduce((sum, d) => sum + d.slideCount, 0)
   if (slides === 0)
     return { status: 'warn', message: 'There are no slides yet. Add them in Slides.' }
@@ -193,7 +194,8 @@ export function soundsCheck(
   results: Readonly<Record<string, SoundResult | undefined>>,
   failed: boolean,
 ): CheckResult {
-  if (failed) return { status: 'fail', message: 'Could not read the sounds. Reload the page.' }
+  if (failed)
+    return { status: 'fail', message: 'Could not read the sounds. Reload the page to try again.' }
   if (!sounds) return { status: 'checking', message: 'Loading sounds...' }
   if (sounds.length === 0) return { status: 'ok', message: 'This workshop has no sounds.' }
   let bad = 0

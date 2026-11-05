@@ -45,7 +45,8 @@ test('asks for blocks when the workshop has none', async () => {
   await setup([])
   render(<RunView />)
   expect(screen.getByRole('heading', { name: 'Run', level: 1 })).toBeInTheDocument()
-  expect(screen.getByText('This workshop has no blocks yet. Add them in Plan.')).toBeVisible()
+  expect(screen.getByText('Nothing to run yet.')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Load sample workshop' })).toBeEnabled()
 })
 
 test('space fires cues in order, shift+space steps back without replaying sounds', async () => {

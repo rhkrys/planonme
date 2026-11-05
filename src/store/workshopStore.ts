@@ -30,6 +30,7 @@ import {
   type SoundPatch,
 } from '../db/repo'
 import type { SlideDeck, Sound, Workshop, WorkshopSummary } from '../db/types'
+import type { SampleWorkshop } from '../sample/sampleWorkshop'
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -81,6 +82,11 @@ export interface WorkshopState {
   /** Changes settings of a sound in the current workshop. True on success. */
   updateSound: (soundId: string, patch: SoundPatch) => Promise<boolean>
   deleteSound: (soundId: string) => Promise<boolean>
+  /**
+   * Builds a demo workshop with build, saves it with its slides and sounds, and opens it. Nothing
+   * is left behind if a step fails. True on success.
+   */
+  createSampleWorkshop: (build: () => Promise<SampleWorkshop>) => Promise<boolean>
 }
 
 export const FIRST_WORKSHOP_TITLE = 'My workshop'
@@ -390,6 +396,28 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
           await syncMedia(id)
           set({ error: null, notice: null })
         }, 'Could not delete the sound.')
+      },
+
+      createSampleWorkshop: async (build) => {
+        return run(async () => {
+          const sample = await build()
+          const db = getDb()
+          const w = await createWorkshop(db, sample.title)
+          try {
+            await updateWorkshop(db, {
+              ...w,
+              durationMin: sample.durationMin,
+              blocks: sample.blocks,
+            })
+            for (const deck of sample.decks) await addSlideDeck(db, w.id, deck)
+            for (const sound of sample.sounds) await addSound(db, w.id, sound)
+          } catch (err) {
+            await deleteWorkshop(db, w.id).catch((cleanupErr: unknown) => console.error(cleanupErr))
+            throw err
+          }
+          await refresh(w.id)
+          set({ error: null, notice: `Added "${w.title}". Open Run and press Space to try it.` })
+        }, 'Could not add the sample workshop.')
       },
     }
   })
