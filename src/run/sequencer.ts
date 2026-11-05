@@ -150,24 +150,42 @@ export function nextSlideCue(plan: RunPlan, pos: Position): (RunCue & { cue: Cue
 
 export interface GoResult {
   pos: Position
-  /** The cue to fire, or null when there are no more cues. */
+  /** The cue to fire, or null when there are no more cues or GO entered a block. */
   fired: (RunCue & { cue: Cue }) | null
+  /**
+   * The index of the block GO moved into without firing anything, because that block has no
+   * cue that can fire (a break with only spoken text, for example). Null otherwise.
+   */
+  entered: number | null
   /** Cues passed over because they can not fire, in order. */
   skipped: RunCue[]
 }
 
-/** GO: moves to the next cue that can fire, passing over the ones that can not. */
+/**
+ * GO: moves to the next cue that can fire, passing over the ones that can not. A block with
+ * nothing to fire is never passed over: GO moves into it, so it becomes the running block and
+ * its time counts. The next GO then goes on from there.
+ */
 export function go(plan: RunPlan, from: Position): GoResult {
   const pos = clampPosition(plan, from)
   const skipped: RunCue[] = []
-  for (let i = pos.cue + 1; i < plan.cues.length; i++) {
+  const nextBlock = pos.block + 1
+  let i = pos.cue + 1
+  for (; i < plan.cues.length; i++) {
     const c = plan.cues[i]
     if (!c) break
-    if (canFire(c)) return { pos: { cue: i, block: c.blockIndex }, fired: c, skipped }
+    // Past the next block: that block has nothing to fire.
+    if (c.blockIndex > nextBlock) break
+    if (canFire(c)) {
+      return { pos: { cue: i, block: c.blockIndex }, fired: c, skipped, entered: null }
+    }
     skipped.push(c)
   }
+  if (nextBlock < plan.blocks.length) {
+    return { pos: { cue: i - 1, block: nextBlock }, fired: null, skipped, entered: nextBlock }
+  }
   // Nothing left to fire. The position stays, so Back still steps from the last fired cue.
-  return { pos, fired: null, skipped }
+  return { pos, fired: null, skipped, entered: null }
 }
 
 /**
@@ -203,6 +221,50 @@ export function jumpToBlock(plan: RunPlan, blockIndex: number): Position {
   const b = plan.blocks[blockIndex]
   if (!b) return clampPosition(plan, START)
   return { cue: b.firstCue - 1, block: blockIndex }
+}
+
+/**
+ * Where a position is in the script in a form that survives edits: the block by id, the cue by
+ * its place in that block, and the cue text. Cue indexes alone move when any earlier script or
+ * the block order changes.
+ */
+export interface Anchor {
+  blockId: string
+  /** Index of the cue in its block, -1 before the block's first cue. */
+  offset: number
+  /** The text of that cue, or null before the block's first cue. */
+  raw: string | null
+}
+
+export function anchorOf(plan: RunPlan, pos: Position): Anchor | null {
+  const b = plan.blocks[pos.block]
+  if (!b) return null
+  const offset = pos.cue - b.firstCue
+  const c = plan.cues[pos.cue]
+  const inBlock = !!c && c.blockIndex === pos.block
+  return {
+    blockId: b.id,
+    offset: inBlock ? offset : Math.min(offset, -1),
+    raw: inBlock ? c.raw : null,
+  }
+}
+
+/**
+ * The position an anchor points at in a plan, or null when its block is gone. When the cue text
+ * moved inside its block, the nearest cue with the same text is used.
+ */
+export function positionOf(plan: RunPlan, anchor: Anchor): Position | null {
+  const block = plan.blocks.findIndex((b) => b.id === anchor.blockId)
+  const b = plan.blocks[block]
+  if (!b) return null
+  if (anchor.raw === null || anchor.offset < 0) return { cue: b.firstCue - 1, block }
+  let best = -1
+  for (let k = 0; k < b.cueCount; k++) {
+    if (plan.cues[b.firstCue + k]?.raw !== anchor.raw) continue
+    if (best === -1 || Math.abs(k - anchor.offset) < Math.abs(best - anchor.offset)) best = k
+  }
+  if (best === -1) best = Math.min(anchor.offset, b.cueCount - 1)
+  return { cue: b.firstCue + best, block }
 }
 
 /** The slide the audience should see at a position: the last slide cue at or before it. */

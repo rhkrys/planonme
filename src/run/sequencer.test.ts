@@ -41,8 +41,8 @@ function runAll(plan: RunPlan): string[] {
   let pos = START
   for (let i = 0; i < 100; i++) {
     const r = go(plan, pos)
-    if (!r.fired) break
-    out.push(r.fired.raw)
+    if (!r.fired && r.entered === null) break
+    if (r.fired) out.push(r.fired.raw)
     pos = r.pos
   }
   return out
@@ -114,8 +114,25 @@ describe('go', () => {
     )
     const first = go(plan, START)
     expect(first.pos).toEqual({ cue: 0, block: 0 })
+    // Block b has no cues. GO moves into it instead of passing over it.
     const second = go(plan, first.pos)
-    expect(second.pos).toEqual({ cue: 1, block: 2 })
+    expect(second).toMatchObject({ pos: { cue: 0, block: 1 }, fired: null, entered: 1 })
+    const third = go(plan, second.pos)
+    expect(third.pos).toEqual({ cue: 1, block: 2 })
+    expect(third.fired?.raw).toBe('[SLIDE 2]')
+  })
+
+  test('enters a block whose only cues can not fire, and blocks at the end', () => {
+    const plan = buildRunPlan(
+      [block('a', '[SLIDE 1]'), block('b', '[SFX gong]'), block('c', 'Thanks.')],
+      media,
+    )
+    const second = go(plan, go(plan, START).pos)
+    expect(second).toMatchObject({ pos: { cue: 1, block: 1 }, entered: 1 })
+    expect(second.skipped.map((c) => c.raw)).toEqual(['[SFX gong]'])
+    const third = go(plan, second.pos)
+    expect(third).toMatchObject({ pos: { cue: 1, block: 2 }, entered: 2, skipped: [] })
+    expect(go(plan, third.pos)).toMatchObject({ fired: null, entered: null })
   })
 
   test('skips cues that can not fire and reports them', () => {
@@ -138,7 +155,7 @@ describe('go', () => {
 
   test('does nothing in a script without cues', () => {
     const plan = buildRunPlan([block('a', 'Just words.')], media)
-    expect(go(plan, START)).toEqual({ pos: START, fired: null, skipped: [] })
+    expect(go(plan, START)).toEqual({ pos: START, fired: null, skipped: [], entered: null })
     expect(buildRunPlan([], media).cues).toEqual([])
     expect(go(buildRunPlan([], media), START).fired).toBeNull()
   })

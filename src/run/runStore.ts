@@ -16,14 +16,17 @@ import {
   type SessionClock,
 } from './clock'
 import {
+  anchorOf,
   back,
   buildRunPlan,
   clampPosition,
   go,
   jumpToBlock,
   jumpToCue,
+  positionOf,
   slideAt,
   START,
+  type Anchor,
   type BlockInput,
   type Position,
   type RunCue,
@@ -69,8 +72,13 @@ export interface RunState {
   stopTimer: () => void
   clearNote: () => void
   setFontSize: (px: number) => void
-  /** Starts a fresh run when the workshop changes. */
+  /** Starts a fresh run when the workshop changes, or picks up the saved run of that workshop. */
   syncWorkshop: (workshopId: string | null) => void
+  /**
+   * Keeps the place in the run after the script or the block order changed, so the next GO
+   * fires the cue that came next before the edit.
+   */
+  syncPlan: () => void
 }
 
 export interface RunDeps {
@@ -81,12 +89,20 @@ export interface RunDeps {
   showSlide: (pos: SlidePos) => void
   playCue: (cue: EngineCue) => Promise<boolean>
   now: () => number
-  /** Keeps the run across a reload. Optional; without it a reload starts a fresh run. */
+  /** Keeps runs across a reload. Optional; without it a reload starts a fresh run. */
   saved?: {
     load: () => unknown
-    save: (run: SavedRun) => void
+    save: (runs: SavedRuns) => void
   }
 }
+
+/** The saved runs of the last few workshops, oldest first. */
+export interface SavedRuns {
+  runs: SavedRun[]
+}
+
+/** How many workshops keep a saved run. */
+export const MAX_SAVED_RUNS = 10
 
 /** The part of a run that survives a reload of the control window. */
 export interface SavedRun {
@@ -96,6 +112,8 @@ export interface SavedRun {
   blockStartMs: number
   blockStarts: Record<string, number>
   timer: CueTimer | null
+  /** Where pos is in the script, so a changed script finds its place again. */
+  anchor?: Anchor | null
 }
 
 const MAX_SAVED_BLOCKS = 1000
@@ -108,8 +126,27 @@ function isRecord(v: unknown): v is Record<string, unknown> {
   return typeof v === 'object' && v !== null && !Array.isArray(v)
 }
 
-/** Reads a saved run back. Stored data is untrusted, so anything odd gives null. */
-export function parseSavedRun(raw: unknown, workshopId: string): SavedRun | null {
+function parseAnchor(v: unknown): Anchor | null {
+  if (!isRecord(v)) return null
+  const { blockId, offset, raw } = v
+  if (typeof blockId !== 'string' || blockId.length === 0 || blockId.length > 100) return null
+  if (typeof offset !== 'number' || !Number.isInteger(offset) || offset < -1) return null
+  if (raw !== null && (typeof raw !== 'string' || raw.length > 1000)) return null
+  return { blockId, offset, raw }
+}
+
+/** The saved runs in stored data, in their order. Older data held one run instead of a list. */
+function savedList(raw: unknown): unknown[] {
+  if (isRecord(raw) && Array.isArray(raw.runs)) return raw.runs.slice(-MAX_SAVED_RUNS)
+  return [raw]
+}
+
+/**
+ * Reads the saved run of a workshop back. Stored data is untrusted, so anything odd gives null.
+ * Takes either the saved list or a single run.
+ */
+export function parseSavedRun(data: unknown, workshopId: string): SavedRun | null {
+  const raw = savedList(data).find((r) => isRecord(r) && r.workshopId === workshopId)
   if (!isRecord(raw) || raw.workshopId !== workshopId) return null
   const { pos, clock, timer, blockStarts } = raw
   if (!isRecord(pos) || !Number.isInteger(pos.cue) || !Number.isInteger(pos.block)) return null
@@ -139,6 +176,7 @@ export function parseSavedRun(raw: unknown, workshopId: string): SavedRun | null
     blockStartMs: raw.blockStartMs,
     blockStarts: starts,
     timer: savedTimer,
+    anchor: parseAnchor(raw.anchor),
   }
 }
 
@@ -187,7 +225,32 @@ function samePos(a: SlidePos | null, b: SlidePos): boolean {
 }
 
 export function createRunStore(deps: RunDeps): StoreApi<RunState> {
+  // Where pos is in the script, and the plan pos was last checked against.
+  let anchor: Anchor | null = null
+  let checkedPlan: RunPlan | null = null
+
   const store = createStore<RunState>()((set, get) => {
+    /** The plan, with pos moved to follow its anchor if the plan changed since last time. */
+    function planHere(): RunPlan {
+      const plan = deps.getPlan()
+      if (plan === checkedPlan) return plan
+      checkedPlan = plan
+      const s = get()
+      const found = anchor ? positionOf(plan, anchor) : null
+      const pos = clampPosition(plan, found ?? s.pos)
+      if (pos.cue !== s.pos.cue || pos.block !== s.pos.block) {
+        // The block may have moved, so take its start time from its id.
+        const id = plan.blocks[pos.block]?.id
+        set({ pos, blockStartMs: startOf(s.blockStarts, id) ?? s.blockStartMs })
+      }
+      return plan
+    }
+
+    function setPos(plan: RunPlan, pos: Position) {
+      anchor = anchorOf(plan, pos)
+      checkedPlan = plan
+    }
+
     /**
      * Moves to a position. Entering a block that has not run yet starts its time; entering one
      * that already ran (for example with Back) keeps its time. restart starts the block again
@@ -212,6 +275,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       if (id !== undefined && startOf(blockStarts, id) !== start) {
         blockStarts = { ...blockStarts, [id]: start }
       }
+      setPos(plan, pos)
       set({ ...extra, pos, blockStartMs: start, blockStarts })
     }
 
@@ -234,11 +298,19 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       fontSize: readFontSize(),
 
       go: () => {
-        const plan = deps.getPlan()
+        const plan = planHere()
         const s = get()
         const result = go(plan, s.pos)
         const skipped = skippedNote(result.skipped)
         const fired = result.fired
+        if (!fired && result.entered !== null) {
+          // A block with nothing to fire, such as a break: it becomes the running block.
+          const clock = isFresh(s.clock) ? startClock(s.clock, deps.now()) : s.clock
+          const title = plan.blocks[result.entered]?.title ?? ''
+          const entered = `Now: ${title}. This block has no cues. Press GO for the next one.`
+          moveTo(plan, result.pos, { clock, note: skipped ? `${skipped} ${entered}` : entered })
+          return
+        }
         if (!fired) {
           const end =
             plan.cues.length === 0
@@ -277,14 +349,14 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       },
 
       back: () => {
-        const plan = deps.getPlan()
+        const plan = planHere()
         const pos = back(plan, get().pos)
         moveTo(plan, pos, { note: null })
         syncSlide(plan, pos)
       },
 
       jumpToCue: (index) => {
-        const plan = deps.getPlan()
+        const plan = planHere()
         const pos = jumpToCue(plan, index)
         if (!pos) return
         moveTo(plan, pos, { note: null })
@@ -292,7 +364,7 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
       },
 
       jumpToBlock: (index) => {
-        const plan = deps.getPlan()
+        const plan = planHere()
         if (!plan.blocks[index]) return
         const pos = jumpToBlock(plan, index)
         // Starting a block again restarts its time, even when it is already running.
@@ -302,15 +374,19 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
 
       startSession: () => set((s) => ({ clock: startClock(s.clock, deps.now()) })),
       pauseSession: () => set((s) => ({ clock: pauseClock(s.clock, deps.now()) })),
-      resetSession: () =>
+      resetSession: () => {
+        const plan = deps.getPlan()
+        const pos = clampPosition(plan, START)
+        setPos(plan, pos)
         set({
-          pos: clampPosition(deps.getPlan(), START),
+          pos,
           clock: STOPPED,
           blockStartMs: 0,
           blockStarts: {},
           timer: null,
           note: null,
-        }),
+        })
+      },
       stopTimer: () => set({ timer: null }),
       clearNote: () => set({ note: null }),
       setFontSize: (px) => {
@@ -328,6 +404,9 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
             saved = null
           }
         }
+        // The plan may not be loaded yet, so pos is checked against it on the next use.
+        anchor = saved?.anchor ?? null
+        checkedPlan = null
         set({
           workshopId,
           pos: saved?.pos ?? START,
@@ -337,6 +416,9 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
           timer: saved?.timer ?? null,
           note: null,
         })
+      },
+      syncPlan: () => {
+        planHere()
       },
     }
   })
@@ -356,14 +438,29 @@ export function createRunStore(deps: RunDeps): StoreApi<RunState> {
         return
       }
       try {
-        saved.save({
+        const run: SavedRun = {
           workshopId: s.workshopId,
           pos: s.pos,
           clock: s.clock,
           blockStartMs: s.blockStartMs,
           blockStarts: s.blockStarts,
           timer: s.timer,
-        })
+          anchor,
+        }
+        // Keep the runs of other workshops, so looking at one does not lose the live one.
+        let others: SavedRun[] = []
+        try {
+          const list = savedList(saved.load())
+          others = list.flatMap((r) => {
+            if (!isRecord(r) || typeof r.workshopId !== 'string') return []
+            if (r.workshopId === run.workshopId) return []
+            const parsed = parseSavedRun(r, r.workshopId)
+            return parsed ? [parsed] : []
+          })
+        } catch {
+          others = []
+        }
+        saved.save({ runs: [...others, run].slice(-MAX_SAVED_RUNS) })
       } catch {
         // Storage can be full or blocked. The run then only lasts until a reload.
       }
@@ -404,11 +501,18 @@ export const runStore = createRunStore({
   saved: {
     load: () => {
       const raw = globalThis.localStorage?.getItem(RUN_KEY)
-      // A saved run is small. Anything big is not ours.
-      return raw && raw.length < 200_000 ? (JSON.parse(raw) as unknown) : null
+      // Saved runs are small. Anything big is not ours.
+      return raw && raw.length < 2_000_000 ? (JSON.parse(raw) as unknown) : null
     },
-    save: (run) => globalThis.localStorage?.setItem(RUN_KEY, JSON.stringify(run)),
+    save: (runs) => globalThis.localStorage?.setItem(RUN_KEY, JSON.stringify(runs)),
   },
+})
+
+// A script edit or a new block order moves cue indexes. Keep the run at the same cue.
+workshopStore.subscribe((s, prev) => {
+  if (s.current?.blocks === prev.current?.blocks && s.media === prev.media) return
+  // Only for the workshop this run belongs to. Another one gets its own run in Run mode.
+  if (s.current && runStore.getState().workshopId === s.current.id) runStore.getState().syncPlan()
 })
 
 export function useRunStore<T>(selector: (state: RunState) => T): T {

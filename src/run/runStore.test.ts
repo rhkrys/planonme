@@ -1,6 +1,6 @@
 import type { SlidePos } from '../slides/decks'
 import { last } from '../test/fakeChannel'
-import { createRunStore, parseSavedRun, skippedNote, type RunDeps, type SavedRun } from './runStore'
+import { createRunStore, parseSavedRun, skippedNote, type RunDeps } from './runStore'
 import { buildRunPlan, type BlockInput } from './sequencer'
 
 const decks = [
@@ -205,7 +205,7 @@ test('the run survives a reload of the window', () => {
   let stored: unknown = null
   const saved = {
     load: () => stored,
-    save: (run: SavedRun) => {
+    save: (run: unknown) => {
       stored = JSON.parse(JSON.stringify(run))
     },
   }
@@ -291,4 +291,75 @@ test('a sound engine that throws does not stop GO', () => {
   expect(t.store.getState().pos.cue).toBe(0)
   t.store.getState().go()
   expect(t.shown).toHaveLength(1)
+})
+
+test('looking at another workshop keeps the run of the first one', () => {
+  let stored: unknown = null
+  const saved = {
+    load: () => stored,
+    save: (runs: unknown) => {
+      stored = JSON.parse(JSON.stringify(runs))
+    },
+  }
+  const t = setup([block('a', '[SLIDE 1] [SLIDE 2]')], { saved })
+  const s = () => t.store.getState()
+  s().go()
+  t.tick(60_000)
+  s().go()
+  const before = { pos: s().pos, clock: s().clock }
+  s().syncWorkshop('w2')
+  expect(s().pos).toEqual({ cue: -1, block: 0 })
+  s().syncWorkshop('w1')
+  expect(s().pos).toEqual(before.pos)
+  expect(s().clock).toEqual(before.clock)
+  // A reload finds both runs too.
+  const again = createRunStore(depsWith(saved, t.now))
+  again.getState().syncWorkshop('w1')
+  expect(again.getState().pos).toEqual(before.pos)
+})
+
+test('editing a script during a run keeps the place in it', () => {
+  let blocks = [block('intro', '[SLIDE 1]'), block('main', '[SLIDE 2] [SFX applause] [SLIDE 3]')]
+  let plan = buildRunPlan(blocks, media)
+  const t = setup(blocks, { getPlan: () => plan })
+  const s = () => t.store.getState()
+  s().go()
+  s().go()
+  s().go()
+  expect(t.played).toEqual([{ type: 'sfx', name: 'applause' }])
+  // A cue is added to the first block, which moves every later cue by one.
+  blocks = [block('intro', '[SLIDE 1] [SLIDE 4]'), blocks[1] ?? block('x', '')]
+  plan = buildRunPlan(blocks, media)
+  s().syncPlan()
+  expect(plan.cues[s().pos.cue]?.raw).toBe('[SFX applause]')
+  s().go()
+  // The applause does not play again: GO goes on to the next slide.
+  expect(t.played).toHaveLength(1)
+  expect(last(t.shown)).toEqual({ deckId: 'd2', index: 0 })
+  // Moving the blocks keeps the running block too.
+  blocks = [blocks[1] ?? block('x', ''), blocks[0] ?? block('x', '')]
+  plan = buildRunPlan(blocks, media)
+  s().syncPlan()
+  expect(plan.blocks[s().pos.block]?.id).toBe('main')
+  expect(plan.cues[s().pos.cue]?.raw).toBe('[SLIDE 3]')
+})
+
+test('GO enters a block that has no cues instead of passing over it', () => {
+  const t = setup([
+    block('intro', 'Hi [SLIDE 1]'),
+    { ...block('break', 'Take ten minutes.'), kind: 'break' },
+    block('work', '[SLIDE 2] Go.'),
+  ])
+  const s = () => t.store.getState()
+  s().go()
+  expect(s().pos.block).toBe(0)
+  t.tick(5_000)
+  s().go()
+  expect(s().pos.block).toBe(1)
+  expect(s().blockStartMs).toBe(5_000)
+  expect(s().note).toMatch(/no cues/)
+  expect(t.shown).toHaveLength(1)
+  s().go()
+  expect(s().pos.block).toBe(2)
+  expect(t.shown).toHaveLength(2)
 })
