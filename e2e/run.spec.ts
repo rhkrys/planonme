@@ -128,3 +128,40 @@ test('run a small workshop with the space bar and drive the audience window', as
   await popup.close()
   await expect(page.getByTestId('run-connection')).toHaveText('Audience window not open')
 })
+
+test('a reload keeps the run, and Back into the last block keeps its time', async ({ page }) => {
+  await page.goto('/')
+  const picker = page.getByRole('combobox', { name: 'Current workshop' })
+  await expect(picker).toBeEnabled()
+  await page.getByRole('button', { name: 'New' }).click()
+  await page.getByRole('textbox', { name: 'Workshop name' }).fill('Reload test')
+  await page.getByRole('button', { name: 'Create' }).click()
+  await expect(picker.locator('option:checked')).toHaveText('Reload test')
+  await addBlock(page, 'Intro', '5')
+  await addBlock(page, 'Talk', '20')
+  await nav(page, 'Script').click()
+  await writeScript(page, 'Intro', 'Hi. [TIMER 5m] [STOP MUSIC]')
+  await writeScript(page, 'Talk', 'Go on. [TIMER 1m]')
+
+  await nav(page, 'Run').click()
+  await page.keyboard.press('Space')
+  await page.keyboard.press('Space')
+  await expect(page.getByTestId('block-countdown')).toHaveText(/^4:5\d$/)
+  // One GO too many goes into the next block. Back returns without restarting Intro.
+  await page.keyboard.press('Space')
+  await expect(page.getByRole('region', { name: 'Talk' })).toContainText('Now')
+  await page.waitForTimeout(1100)
+  await page.keyboard.press('Shift+Space')
+  await expect(page.getByRole('region', { name: 'Intro' })).toContainText('Now')
+  await expect(page.getByTestId('block-countdown')).not.toHaveText('5:00')
+
+  await page.reload()
+  await nav(page, 'Run').click()
+  await expect(page.getByRole('button', { name: /^Jump to \[STOP MUSIC\]/ })).toHaveAttribute(
+    'aria-current',
+    'step',
+  )
+  await expect(page.getByRole('button', { name: 'Pause session' })).toBeVisible()
+  await expect(page.getByTestId('elapsed')).not.toHaveText('0:00')
+  await expect(page.getByTestId('run-timer')).toBeVisible()
+})

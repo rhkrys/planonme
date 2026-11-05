@@ -1,6 +1,6 @@
 import type { SlidePos } from '../slides/decks'
 import { last } from '../test/fakeChannel'
-import { createRunStore, skippedNote, type RunDeps } from './runStore'
+import { createRunStore, parseSavedRun, skippedNote, type RunDeps, type SavedRun } from './runStore'
 import { buildRunPlan, type BlockInput } from './sequencer'
 
 const decks = [
@@ -13,7 +13,7 @@ function block(id: string, script: string, durationMin = 10): BlockInput {
   return { id, title: id, kind: 'talk', durationMin, script }
 }
 
-function setup(blocks: BlockInput[]) {
+function setup(blocks: BlockInput[], extra: Partial<RunDeps> = {}) {
   let now = 1_000_000
   let audience: SlidePos | null = null
   const shown: SlidePos[] = []
@@ -32,6 +32,7 @@ function setup(blocks: BlockInput[]) {
       return Promise.resolve(true)
     },
     now: () => now,
+    ...extra,
   }
   const store = createRunStore(deps)
   store.getState().syncWorkshop('w1')
@@ -161,4 +162,133 @@ test('skippedNote lists at most five cues', () => {
     'Skipped 6 cues that cannot run: [SFX a], [SFX b], [SFX c], [SFX d], [SFX e] and 1 more.',
   )
   expect(skippedNote([])).toBeNull()
+})
+
+test('Back into an earlier block keeps its time, Start here restarts it', () => {
+  const t = setup([
+    block('a', '[SLIDE 1] [SLIDE 2]'),
+    block('b', '[SLIDE 3]'),
+    block('c', '[SLIDE 4]'),
+  ])
+  const s = () => t.store.getState()
+  s().go()
+  t.tick(60_000)
+  s().go()
+  t.tick(60_000)
+  // An accidental GO into block b, then Back.
+  s().go()
+  expect(s().pos.block).toBe(1)
+  expect(s().blockStartMs).toBe(120_000)
+  t.tick(5_000)
+  s().back()
+  expect(s().pos).toEqual({ cue: 1, block: 0 })
+  // Block a still started at the session start, so its countdown does not start over.
+  expect(s().blockStartMs).toBe(0)
+  // GO into block b again keeps the time it first started.
+  s().go()
+  expect(s().blockStartMs).toBe(120_000)
+  t.tick(5_000)
+  s().jumpToCue(0)
+  expect(s().blockStartMs).toBe(0)
+  // Start here on block a starts it again and forgets the later blocks.
+  s().jumpToBlock(0)
+  expect(s().blockStartMs).toBe(130_000)
+  s().go()
+  s().go()
+  t.tick(1_000)
+  s().go()
+  expect(s().pos.block).toBe(1)
+  expect(s().blockStartMs).toBe(131_000)
+})
+
+test('the run survives a reload of the window', () => {
+  let stored: unknown = null
+  const saved = {
+    load: () => stored,
+    save: (run: SavedRun) => {
+      stored = JSON.parse(JSON.stringify(run))
+    },
+  }
+  const blocks = [block('a', '[SLIDE 1]'), block('b', '[SLIDE 2] [TIMER 1m]')]
+  const t = setup(blocks, { saved })
+  const s = () => t.store.getState()
+  s().go()
+  t.tick(30_000)
+  s().go()
+  s().go()
+  const before = { pos: s().pos, clock: s().clock, timer: s().timer, start: s().blockStartMs }
+
+  const again = createRunStore(depsWith(saved, t.now))
+  again.getState().syncWorkshop('w1')
+  expect(again.getState().pos).toEqual(before.pos)
+  expect(again.getState().clock).toEqual(before.clock)
+  expect(again.getState().timer).toEqual(before.timer)
+  expect(again.getState().blockStartMs).toBe(before.start)
+
+  // Another workshop does not pick up this run.
+  const other = createRunStore(depsWith(saved, t.now))
+  other.getState().syncWorkshop('w2')
+  expect(other.getState().pos).toEqual({ cue: -1, block: 0 })
+})
+
+function depsWith(saved: RunDeps['saved'], now: () => number): RunDeps {
+  return {
+    getPlan: () => buildRunPlan([], media),
+    getDecks: () => decks,
+    currentSlide: () => null,
+    showSlide: () => {},
+    playCue: () => Promise.resolve(true),
+    now,
+    saved,
+  }
+}
+
+test('a broken saved run is ignored, never a crash', () => {
+  const good = {
+    workshopId: 'w1',
+    pos: { cue: 2, block: 1 },
+    clock: { running: false, startedAt: 0, accumulated: 5000 },
+    blockStartMs: 100,
+    blockStarts: { a: 0, b: 100, c: 'x', ['__proto__']: 5 },
+    timer: null,
+  }
+  expect(parseSavedRun(good, 'w1')?.blockStarts).toEqual({ a: 0, b: 100 })
+  for (const bad of [
+    null,
+    'text',
+    [],
+    { ...good, workshopId: 'w2' },
+    { ...good, pos: { cue: 1.5, block: 0 } },
+    { ...good, clock: { running: 'yes', startedAt: 0, accumulated: 0 } },
+    { ...good, clock: { running: true, startedAt: Number.NaN, accumulated: 0 } },
+    { ...good, blockStartMs: -1 },
+    { ...good, timer: { seconds: 1e12, startedAt: 0 } },
+  ]) {
+    expect(parseSavedRun(bad, 'w1')).toBeNull()
+  }
+  const throwing = setup([block('a', '[SLIDE 1]')], {
+    saved: {
+      load: () => {
+        throw new Error('blocked')
+      },
+      save: () => {
+        throw new Error('full')
+      },
+    },
+  })
+  throwing.store.getState().syncWorkshop('w9')
+  expect(() => throwing.store.getState().go()).not.toThrow()
+  expect(throwing.store.getState().pos.cue).toBe(0)
+})
+
+test('a sound engine that throws does not stop GO', () => {
+  const t = setup([block('a', '[SFX applause] [SLIDE 1]')], {
+    playCue: () => {
+      throw new Error('no audio')
+    },
+  })
+  t.store.getState().go()
+  expect(t.store.getState().pos.cue).toBe(0)
+  t.store.getState().go()
+  expect(t.shown).toHaveLength(1)
 })

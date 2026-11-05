@@ -542,12 +542,20 @@ function NextUp({
         </p>
       )}
       {where && slideNumber !== null ? (
-        <AudiencePreview
-          screen={{ mode: 'slide', deckId: where.deckId, index: where.index, number: slideNumber }}
-          decks={decks}
-          label={`Next slide: slide ${slideNumber}`}
-          testId="next-slide"
-        />
+        <>
+          <p className="muted run-next-slide">Next slide: {slideNumber}</p>
+          <AudiencePreview
+            screen={{
+              mode: 'slide',
+              deckId: where.deckId,
+              index: where.index,
+              number: slideNumber,
+            }}
+            decks={decks}
+            label={`Next slide: slide ${slideNumber}`}
+            testId="next-slide"
+          />
+        </>
       ) : (
         <p className="muted">No more slide cues.</p>
       )}
