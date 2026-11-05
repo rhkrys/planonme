@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { BACKUP_FORMAT } from '../db/backup'
 import { PlanOnMeDB } from '../db/db'
-import { addSlideDeck, addSound } from '../db/repo'
+import { addSlideDeck, addSound, getWorkshop } from '../db/repo'
 import { buildSampleWorkshop, SAMPLE_TITLE, type SampleWorkshop } from '../sample/sampleWorkshop'
 import { fakePngBytes, makeWav } from '../test/media'
 import { createWorkshopStore, FIRST_WORKSHOP_TITLE } from './workshopStore'
@@ -356,4 +356,32 @@ describe('sample workshop', () => {
     expect(store.getState().error).toBe('Could not add the sample workshop.')
     expect(store.getState().workshops).toHaveLength(1)
   })
+})
+
+test('an edit in a second tab does not undo block edits made in the first', async () => {
+  const blank = { kind: 'talk' as const, durationMin: 5, goal: '', notes: '', script: '' }
+  const b1 = { ...blank, id: 'b1', title: 'One' }
+  const b2 = { ...blank, id: 'b2', title: 'Two' }
+  const tabA = makeStore()
+  await tabA.getState().init()
+  await tabA.getState().updateCurrent({ blocks: [b1, b2] })
+  const tabB = makeStore()
+  await tabB.getState().init()
+
+  await tabA.getState().updateCurrent({ blocks: [{ ...b1, script: 'IMPORTANT' }, b2] })
+  const bBlocks = tabB.getState().current?.blocks ?? []
+  await tabB
+    .getState()
+    .updateCurrent({ blocks: bBlocks.map((b) => (b.id === 'b2' ? { ...b, title: 'Renamed' } : b)) })
+
+  const id = tabA.getState().currentId ?? ''
+  const stored = await getWorkshop(db, id)
+  expect(stored?.blocks.map((b) => [b.title, b.script])).toEqual([
+    ['One', 'IMPORTANT'],
+    ['Renamed', ''],
+  ])
+  // Tab B now shows both edits too, and tab A picks them up when it is used again.
+  expect(tabB.getState().current?.blocks[0]?.script).toBe('IMPORTANT')
+  await tabA.getState().reloadCurrent()
+  expect(tabA.getState().current?.blocks[1]?.title).toBe('Renamed')
 })

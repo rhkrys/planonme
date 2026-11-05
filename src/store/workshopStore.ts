@@ -31,6 +31,7 @@ import {
 } from '../db/repo'
 import type { SlideDeck, Sound, Workshop, WorkshopSummary } from '../db/types'
 import type { SampleWorkshop } from '../sample/sampleWorkshop'
+import { mergeBlocks } from './mergeBlocks'
 
 export type LoadStatus = 'idle' | 'loading' | 'ready' | 'error'
 
@@ -65,6 +66,11 @@ export interface WorkshopState {
   exportCurrent: () => Promise<ExportedFile | null>
   importFile: (file: Blob) => Promise<boolean>
   clearMessages: () => void
+  /**
+   * Reads the current workshop again when another tab may have changed it, for example when this
+   * tab gets focus. Does nothing while an edit of this tab is still being written.
+   */
+  reloadCurrent: () => Promise<void>
   /** Reloads the media summary, for example after adding a slide deck or a sound. */
   refreshMedia: () => Promise<void>
   /** The current workshop's slide decks with their images, or null if they could not be read. */
@@ -114,6 +120,13 @@ function plural(n: number, word: string): string {
 
 export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopState> {
   return createStore<WorkshopState>()((set, get) => {
+    // The blocks of the current workshop as this tab last read or wrote them. A save compares
+    // against these to find what another tab changed in between.
+    let baseBlocks: { id: string; blocks: Workshop['blocks'] } | null = null
+    function setBase(w: Workshop | null) {
+      baseBlocks = w ? { id: w.id, blocks: w.blocks } : null
+    }
+
     /** Reloads the list and the current workshop, falling back to the first one. */
     async function refresh(preferredId: string | null): Promise<void> {
       const db = getDb()
@@ -122,6 +135,7 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
       const id = wanted ?? workshops[0]?.id ?? null
       const current = id ? await getWorkshop(db, id) : null
       const media = current ? await loadMedia(current) : null
+      setBase(current)
       set({ workshops, currentId: current?.id ?? null, current, media })
       await setCurrentWorkshopId(db, current?.id ?? null)
     }
@@ -250,7 +264,13 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
           const db = getDb()
           const stored = await getWorkshop(db, next.id)
           if (!stored) throw new WorkshopNotFoundError()
-          const saved = await updateWorkshop(db, { ...stored, ...patch })
+          const merged: Workshop = { ...stored, ...patch }
+          // Another tab may have changed other blocks since this tab read them. Keep those.
+          if (patch.blocks && baseBlocks?.id === stored.id) {
+            merged.blocks = mergeBlocks(baseBlocks.blocks, patch.blocks, stored.blocks)
+          }
+          const saved = await updateWorkshop(db, merged)
+          setBase(saved)
           set((s) => ({
             // Only the newest edit updates the screen. Older ones would hide newer unsaved
             // edits, which have their own save queued.
@@ -289,6 +309,26 @@ export function createWorkshopStore(getDb: () => PlanOnMeDB): StoreApi<WorkshopS
       },
 
       clearMessages: () => set({ error: null, notice: null }),
+
+      reloadCurrent: async () => {
+        await run(async () => {
+          const current = get().current
+          if (!current || get().pendingSaves > 0) return
+          const stored = await getWorkshop(getDb(), current.id)
+          if (!stored || stored.updatedAt === current.updatedAt) return
+          if (get().pendingSaves > 0 || get().current !== current) return
+          const media = await loadMedia(stored)
+          if (get().pendingSaves > 0 || get().current !== current) return
+          setBase(stored)
+          set((s) => ({
+            current: stored,
+            media,
+            workshops: s.workshops.map((w) =>
+              w.id === stored.id ? { id: stored.id, title: stored.title } : w,
+            ),
+          }))
+        }, 'Could not read the workshop.')
+      },
 
       refreshMedia: async () => {
         await run(async () => {

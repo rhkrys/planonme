@@ -30,6 +30,19 @@ export default function App() {
   useSoundLibrarySync()
   useSoundKeys()
 
+  // Another tab may have changed this workshop. Read it again when this tab comes back.
+  useEffect(() => {
+    function onBack() {
+      if (document.visibilityState === 'visible') void workshopStore.getState().reloadCurrent()
+    }
+    window.addEventListener('focus', onBack)
+    document.addEventListener('visibilitychange', onBack)
+    return () => {
+      window.removeEventListener('focus', onBack)
+      document.removeEventListener('visibilitychange', onBack)
+    }
+  }, [])
+
   // Ask before closing or reloading the tab while an edit is still being written.
   useEffect(() => {
     function onBeforeUnload(e: BeforeUnloadEvent) {
