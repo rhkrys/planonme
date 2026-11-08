@@ -571,7 +571,7 @@ export class AudioEngine {
 
   /** Throws a DecodeError before decoding a file that is known to be too long. */
   private async checkLength(blob: Blob): Promise<void> {
-    let seconds: number | null = null
+    let seconds: number | null
     try {
       seconds = await this.readDuration(blob)
     } catch {
